@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Data files (too large for git)
+data/
+*.tif
+*.tiff
+*.img
+*.jp2
+*.nc
+
+# Compiled resources
+resources.py
+
+# Qt compiled files
+*.qm
+
+# Conda environment
+*.conda
+environment_lock.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# QGIS
+*.qgs~
+*.qgz
