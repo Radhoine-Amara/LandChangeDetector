@@ -2,14 +2,7 @@
 band_differencing.py
 --------------------
 Method 1: Spectral Band Differencing
-
-The simplest change detection method.
-Subtracts pixel values of the same band between two dates.
-Large absolute differences indicate change.
-
-Math:
-    diff  = Band_After - Band_Before
-    mask  = |diff| > threshold  → True means CHANGED
+Supports NaN masking for cloud-free analysis.
 """
 
 import numpy as np
@@ -19,24 +12,12 @@ from scipy.ndimage import gaussian_filter
 def compute_difference(band_before, band_after):
     """
     Subtract two single-band arrays.
-
-    Parameters
-    ----------
-    band_before : np.ndarray  shape (rows, cols)  — pixel values at time 1
-    band_after  : np.ndarray  shape (rows, cols)  — pixel values at time 2
-
-    Returns
-    -------
-    diff : np.ndarray
-        Signed difference (negative = decrease, positive = increase)
-    abs_diff : np.ndarray
-        Absolute difference (magnitude of change only)
+    NaN pixels (clouds) are preserved as NaN in output.
     """
-
     if band_before.shape != band_after.shape:
         raise ValueError(
-            f"Shape mismatch: before={band_before.shape}, after={band_after.shape}. "
-            "Images must be the same size."
+            f"Shape mismatch: before={band_before.shape}, "
+            f"after={band_after.shape}"
         )
 
     diff     = band_after.astype(np.float32) - band_before.astype(np.float32)
@@ -48,57 +29,42 @@ def compute_difference(band_before, band_after):
 def otsu_threshold(abs_diff):
     """
     Automatically find the best threshold using Otsu's method.
-
-    Otsu's method finds the threshold that best separates
-    two classes (changed vs unchanged) by minimizing
-    within-class variance.
-
-    Parameters
-    ----------
-    abs_diff : np.ndarray  — absolute difference image
-
-    Returns
-    -------
-    threshold : float
+    NaN pixels are excluded from the calculation.
     """
-
-    # Flatten to 1D and remove zeros (no-change pixels dominate)
+    # Flatten and remove NaN and zeros
     flat = abs_diff.flatten()
-    flat = flat[flat > 0]
+    flat = flat[~np.isnan(flat)]   # ← remove NaN
+    flat = flat[flat > 0]          # ← remove no-change pixels
 
-    # Build histogram with 256 bins
+    if len(flat) == 0:
+        raise ValueError("No valid pixels to compute threshold!")
+
     hist, bin_edges = np.histogram(flat, bins=256)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
-    # Otsu's formula: maximize between-class variance
-    total = hist.sum()
-    best_thresh = 0
+    total      = hist.sum()
+    best_thresh   = 0
     best_variance = 0
-
-    weight_bg = 0
-    sum_bg = 0
-    total_sum = np.sum(hist * bin_centers)
+    weight_bg  = 0
+    sum_bg     = 0
+    total_sum  = np.sum(hist * bin_centers)
 
     for i in range(len(hist)):
         weight_bg += hist[i]
         if weight_bg == 0:
             continue
-
         weight_fg = total - weight_bg
         if weight_fg == 0:
             break
 
-        sum_bg += hist[i] * bin_centers[i]
-
-        mean_bg = sum_bg / weight_bg
-        mean_fg = (total_sum - sum_bg) / weight_fg
-
-        # Between-class variance
-        variance = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
+        sum_bg   += hist[i] * bin_centers[i]
+        mean_bg   = sum_bg / weight_bg
+        mean_fg   = (total_sum - sum_bg) / weight_fg
+        variance  = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
 
         if variance > best_variance:
             best_variance = variance
-            best_thresh = bin_centers[i]
+            best_thresh   = bin_centers[i]
 
     return best_thresh
 
@@ -106,33 +72,27 @@ def otsu_threshold(abs_diff):
 def apply_threshold(abs_diff, threshold=None, smooth=True):
     """
     Apply a threshold to produce a binary change mask.
-
-    Parameters
-    ----------
-    abs_diff  : np.ndarray  — absolute difference image
-    threshold : float or None
-        If None → automatically determined using Otsu's method
-    smooth    : bool
-        If True → apply Gaussian smoothing before thresholding
-        (reduces salt-and-pepper noise)
-
-    Returns
-    -------
-    change_mask : np.ndarray (bool)
-        True  → pixel changed
-        False → pixel unchanged
-    threshold : float
-        The threshold value used (useful when auto-computed)
+    NaN pixels are always marked as unchanged (False).
     """
+    # Work on a copy to avoid modifying original
+    abs_diff_work = abs_diff.copy()
+
+    # Temporarily fill NaN with 0 for smoothing
+    nan_mask = np.isnan(abs_diff_work)
+    abs_diff_work[nan_mask] = 0
 
     if smooth:
-        abs_diff = gaussian_filter(abs_diff, sigma=1)
+        abs_diff_work = gaussian_filter(abs_diff_work, sigma=1)
+
+    # Restore NaN after smoothing
+    abs_diff_work[nan_mask] = np.nan
 
     if threshold is None:
-        threshold = otsu_threshold(abs_diff)
+        threshold = otsu_threshold(abs_diff_work)
         print(f"Auto threshold (Otsu): {threshold:.2f}")
 
-    change_mask = abs_diff > threshold
+    # Threshold — NaN pixels = False (unchanged)
+    change_mask = np.where(nan_mask, False, abs_diff_work > threshold)
 
     return change_mask, threshold
 
@@ -140,36 +100,18 @@ def apply_threshold(abs_diff, threshold=None, smooth=True):
 def run_band_differencing(band_before, band_after, threshold=None, smooth=True):
     """
     Full pipeline: difference → threshold → change mask.
-
-    Parameters
-    ----------
-    band_before : np.ndarray  shape (rows, cols)
-    band_after  : np.ndarray  shape (rows, cols)
-    threshold   : float or None (auto if None)
-    smooth      : bool
-
-    Returns
-    -------
-    results : dict with keys:
-        'diff'        → signed difference image
-        'abs_diff'    → absolute difference image
-        'change_mask' → binary change map (True = changed)
-        'threshold'   → threshold value used
-        'change_pct'  → percentage of pixels that changed
+    Handles NaN (cloud-masked) pixels correctly.
     """
-
-    # Step 1: Compute difference
     diff, abs_diff = compute_difference(band_before, band_after)
-
-    # Step 2: Apply threshold → binary mask
     change_mask, threshold = apply_threshold(abs_diff, threshold, smooth)
 
-    # Step 3: Compute statistics
-    change_pct = (change_mask.sum() / change_mask.size) * 100
+    # Statistics on VALID pixels only (exclude NaN)
+    valid_pixels = (~np.isnan(abs_diff)).sum()
+    change_pct   = (change_mask.sum() / valid_pixels) * 100 if valid_pixels > 0 else 0
 
+    print(f"Valid pixels   : {valid_pixels:,}")
     print(f"Changed pixels : {change_mask.sum():,}")
-    print(f"Total pixels   : {change_mask.size:,}")
-    print(f"Change %       : {change_pct:.2f}%")
+    print(f"Change %       : {change_pct:.2f}% (of valid pixels)")
 
     return {
         'diff'       : diff,
