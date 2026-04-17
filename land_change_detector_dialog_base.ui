@@ -1,67 +1,381 @@
-<ui version="4.0" >
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
  <class>LandChangeDetectorDialogBase</class>
- <widget class="QDialog" name="LandChangeDetectorDialogBase" >
-  <property name="geometry" >
+ <widget class="QDialog" name="LandChangeDetectorDialogBase">
+  <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>300</height>
+    <width>520</width>
+    <height>560</height>
    </rect>
   </property>
-  <property name="windowTitle" >
-   <string>Land Change Detector</string>
+  <property name="minimumSize">
+   <size>
+    <width>520</width>
+    <height>560</height>
+   </size>
   </property>
-  <widget class="QDialogButtonBox" name="button_box" >
-   <property name="geometry" >
-    <rect>
-     <x>30</x>
-     <y>240</y>
-     <width>341</width>
-     <height>32</height>
-    </rect>
+  <property name="windowTitle">
+   <string>LandChangeDetector</string>
+  </property>
+
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>8</number></property>
+   <property name="contentsMargins">
+    <number>14</number><number>14</number><number>14</number><number>14</number>
    </property>
-   <property name="orientation" >
-    <enum>Qt::Horizontal</enum>
-   </property>
-   <property name="standardButtons" >
-    <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
-   </property>
-  </widget>
+
+   <!-- ══════════════════════════════════════════════════
+        SECTION 1 — Input Images
+   ══════════════════════════════════════════════════ -->
+   <item>
+    <widget class="QGroupBox" name="groupInput">
+     <property name="title"><string>Input Images</string></property>
+     <layout class="QFormLayout" name="formInput">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>6</number></property>
+      <property name="contentsMargins">
+       <number>10</number><number>10</number><number>10</number><number>10</number>
+      </property>
+
+      <!-- Before Image -->
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelBefore">
+        <property name="text"><string>Before Image:</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditBefore">
+          <property name="placeholderText">
+           <string>Select before image band (e.g. B04_10m.jp2)</string>
+          </property>
+          <property name="toolTip">
+           <string>Select the Red band (B04_10m.jp2) of the BEFORE Sentinel-2 image</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseBefore">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+          <property name="toolTip"><string>Open file browser</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- After Image -->
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelAfter">
+        <property name="text"><string>After Image:</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditAfter">
+          <property name="placeholderText">
+           <string>Select after image band (e.g. B04_10m.jp2)</string>
+          </property>
+          <property name="toolTip">
+           <string>Select the Red band (B04_10m.jp2) of the AFTER Sentinel-2 image</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseAfter">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- SCL Mask -->
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelSCL">
+        <property name="text"><string>SCL Mask (Before):</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditSCL">
+          <property name="placeholderText">
+           <string>Select SCL_20m.jp2 cloud mask (optional)</string>
+          </property>
+          <property name="toolTip">
+           <string>Scene Classification Layer for cloud masking (20m resolution)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseSCL">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <!-- ══════════════════════════════════════════════════
+        SECTION 2 — Algorithm Settings
+   ══════════════════════════════════════════════════ -->
+   <item>
+    <widget class="QGroupBox" name="groupAlgorithm">
+     <property name="title"><string>Algorithm Settings</string></property>
+     <layout class="QFormLayout" name="formAlgorithm">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>8</number></property>
+      <property name="contentsMargins">
+       <number>10</number><number>10</number><number>10</number><number>10</number>
+      </property>
+
+      <!-- Method -->
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelMethod">
+        <property name="text"><string>Method:</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboMethod">
+        <property name="toolTip">
+         <string>Select the change detection algorithm to run</string>
+        </property>
+        <item><property name="text"><string>Band Differencing</string></property></item>
+        <item><property name="text"><string>NDVI Differencing</string></property></item>
+        <item><property name="text"><string>Change Vector Analysis (CVA)</string></property></item>
+        <item><property name="text"><string>Random Forest (Post-Classification)</string></property></item>
+       </widget>
+      </item>
+
+      <!-- Threshold -->
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelThreshold">
+        <property name="text"><string>Threshold:</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QRadioButton" name="radioThresholdAuto">
+          <property name="text"><string>Auto (Otsu)</string></property>
+          <property name="checked"><bool>true</bool></property>
+          <property name="toolTip">
+           <string>Automatically compute optimal threshold using Otsu's method</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="radioThresholdManual">
+          <property name="text"><string>Manual:</string></property>
+          <property name="toolTip">
+           <string>Enter a manual threshold value</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="spinThreshold">
+          <property name="enabled"><bool>false</bool></property>
+          <property name="toolTip"><string>Manual threshold value</string></property>
+          <property name="minimum"><double>0.000000</double></property>
+          <property name="maximum"><double>99999.000000</double></property>
+          <property name="singleStep"><double>0.010000</double></property>
+               <property name="decimals"><number>4</number></property>
+          <property name="value"><double>0.1000</double></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- Checkboxes row -->
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelOptions">
+        <property name="text"><string>Options:</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QCheckBox" name="checkCloudMask">
+          <property name="text"><string>Enable cloud masking</string></property>
+          <property name="checked"><bool>true</bool></property>
+          <property name="toolTip">
+           <string>Apply SCL-based cloud mask before running the algorithm</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="checkSmooth">
+          <property name="text"><string>Gaussian smoothing</string></property>
+          <property name="checked"><bool>true</bool></property>
+          <property name="toolTip">
+           <string>Apply Gaussian filter (sigma=1) to reduce salt-and-pepper noise</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <!-- ══════════════════════════════════════════════════
+        SECTION 3 — Output Settings
+   ══════════════════════════════════════════════════ -->
+   <item>
+    <widget class="QGroupBox" name="groupOutput">
+     <property name="title"><string>Output</string></property>
+     <layout class="QFormLayout" name="formOutput">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>6</number></property>
+      <property name="contentsMargins">
+       <number>10</number><number>10</number><number>10</number><number>10</number>
+      </property>
+
+      <!-- Output path -->
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelOutputPath">
+        <property name="text"><string>Output folder:</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditOutput">
+          <property name="placeholderText">
+           <string>Select output directory</string>
+          </property>
+          <property name="toolTip">
+           <string>Directory where results (GeoTIFF, CSV) will be saved</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseOutput">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <!-- Export checkboxes -->
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelExport">
+        <property name="text"><string>Export:</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QCheckBox" name="checkExportGeoTIFF">
+          <property name="text"><string>Change map (GeoTIFF)</string></property>
+          <property name="checked"><bool>true</bool></property>
+          <property name="toolTip">
+           <string>Save the change mask as a georeferenced GeoTIFF and add to QGIS canvas</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="checkExportCSV">
+          <property name="text"><string>Statistics (CSV)</string></property>
+          <property name="checked"><bool>true</bool></property>
+          <property name="toolTip">
+           <string>Export change statistics table as CSV</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <!-- ══════════════════════════════════════════════════
+        SECTION 4 — Status Label
+   ══════════════════════════════════════════════════ -->
+   <item>
+    <widget class="QLabel" name="labelStatus">
+     <property name="text"><string>Ready.</string></property>
+     <property name="alignment">
+      <set>Qt::AlignHCenter|Qt::AlignVCenter</set>
+     </property>
+     <property name="toolTip">
+      <string>Current processing status</string>
+     </property>
+    </widget>
+   </item>
+
+   <!-- ══════════════════════════════════════════════════
+        SECTION 5 — Progress Bar
+   ══════════════════════════════════════════════════ -->
+   <item>
+    <widget class="QProgressBar" name="progressBar">
+     <property name="value"><number>0</number></property>
+     <property name="textVisible"><bool>true</bool></property>
+     <property name="format"><string>%p%</string></property>
+     <property name="toolTip"><string>Processing progress</string></property>
+    </widget>
+   </item>
+
+   <!-- ══════════════════════════════════════════════════
+        SECTION 6 — Run / Close buttons
+   ══════════════════════════════════════════════════ -->
+   <item>
+    <layout class="QHBoxLayout" name="layoutButtons">
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0">
+        <size><width>40</width><height>20</height></size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnRun">
+       <property name="text"><string>Run Analysis</string></property>
+       <property name="minimumWidth"><number>120</number></property>
+       <property name="toolTip"><string>Start the selected change detection algorithm</string></property>
+       <property name="default"><bool>true</bool></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnClose">
+       <property name="text"><string>Close</string></property>
+       <property name="minimumWidth"><number>80</number></property>
+       <property name="toolTip"><string>Close this dialog</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+  </layout>
  </widget>
+
  <resources/>
+
  <connections>
+  <!-- Close button closes the dialog -->
   <connection>
-   <sender>button_box</sender>
-   <signal>accepted()</signal>
-   <receiver>LandChangeDetectorDialogBase</receiver>
-   <slot>accept()</slot>
-   <hints>
-    <hint type="source_label" >
-     <x>248</x>
-     <y>254</y>
-    </hint>
-    <hint type="destination_label" >
-     <x>157</x>
-     <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>button_box</sender>
-   <signal>rejected()</signal>
+   <sender>btnClose</sender>
+   <signal>clicked()</signal>
    <receiver>LandChangeDetectorDialogBase</receiver>
    <slot>reject()</slot>
    <hints>
-    <hint type="source_label" >
-     <x>316</x>
-     <y>260</y>
-    </hint>
-    <hint type="destination_label" >
-     <x>286</x>
-     <y>274</y>
-    </hint>
+    <hint type="sourcelabel"><x>460</x><y>540</y></hint>
+    <hint type="destinationlabel"><x>260</x><y>280</y></hint>
    </hints>
   </connection>
  </connections>
+
 </ui>
