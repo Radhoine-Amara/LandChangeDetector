@@ -212,10 +212,10 @@ def train_random_forest(X_train, y_train, random_state=42):
 
     # Validation accuracy
     val_pred = clf.predict(X_val)
-    accuracy = (val_pred == y_val).mean() * 100
-    print(f"Validation accuracy: {accuracy:.1f}%")
+    accuracy = (val_pred == y_val).mean()
+    print(f"Validation accuracy: {accuracy * 100:.1f}%")
 
-    return clf
+    return clf, accuracy
 
 
 def classify_image(clf, features_2d, valid_mask, image_shape):
@@ -347,7 +347,7 @@ def run_random_forest(bands_before, bands_after,
 
     # ── Step 3: Train Random Forest ───────────────────────────────
     print("\nSTEP 3: Training Random Forest classifier")
-    clf = train_random_forest(X_train, y_train, random_state)
+    clf, accuracy = train_random_forest(X_train, y_train, random_state)
 
     # ── Step 4: Classify both images ─────────────────────────────
     print("\nSTEP 4: Classifying BEFORE image")
@@ -382,7 +382,9 @@ def run_random_forest(bands_before, bands_after,
         'transition_matrix'     : matrix,
         'transition_matrix_pct' : matrix_pct,
         'clf'                   : clf,
+        'accuracy'              : accuracy,
         'change_pct'            : change_pct,
         'valid_mask'            : valid_both_rf,
         'feature_names'         : feat_names,
+        'class_names'           : [CLASS_LABELS[i] for i in range(1, n_classes + 1)],
     }

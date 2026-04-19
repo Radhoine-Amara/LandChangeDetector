@@ -1,0 +1,5 @@
+method,changed_area_ha,changed_area_km2,unchanged_area_ha,change_pct,valid_pixels
+Band Differencing,11750.98,117.5098,28249.02,29.3774,4000000
+NDVI Differencing,4486.82,44.8682,35513.18,11.2171,4000000
+CVA,8101.02,81.0102,31898.98,20.2525,4000000
+Random Forest,16650.08,166.5008,23349.92,41.6252,4000000

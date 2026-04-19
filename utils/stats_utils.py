@@ -324,6 +324,16 @@ def compare_all_methods(bd_results, ndvi_results, cva_results, rf_results):
             comparison.loc[i, "rf_accuracy_pct"] = round(
                 float(rf_results["accuracy"]) * 100, 2)
 
+    if rf_results is not None and "transition_matrix_pct" in rf_results:
+        idx = comparison.index[comparison["method"] == "Random Forest"]
+        if len(idx):
+            i = idx[0]
+            trans_pct = rf_results["transition_matrix_pct"]
+            class_names = rf_results.get("class_names", [])
+            for j, name in enumerate(class_names):
+                comparison.loc[i, f"rf_stable_{name.lower().replace(' ','_')}_pct"] = round(
+                    float(trans_pct[j, j]), 2)
+
     return comparison
 
 

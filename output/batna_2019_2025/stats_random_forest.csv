@@ -1,0 +1,6 @@
+method,metric,value,unit
+Random Forest,total_pixels,4000000.0,px
+Random Forest,changed_pixels,1665008.0,px
+Random Forest,unchanged_pixels,2334992.0,px
+Random Forest,change_pct,50.1644,%
+Random Forest,rf_validation_accuracy,,%

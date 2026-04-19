@@ -1,0 +1,9 @@
+method,metric,value,unit
+Band Differencing,total_pixels,4000000.0,px
+Band Differencing,changed_pixels,1175098.0,px
+Band Differencing,unchanged_pixels,2824902.0,px
+Band Differencing,change_pct,35.4041,%
+Band Differencing,threshold,675.979248,
+Band Differencing,abs_diff_mean,587.0769,
+Band Differencing,abs_diff_std,422.6786,
+Band Differencing,abs_diff_max,4338.0,

@@ -57,10 +57,6 @@ run_random_forest = _load_random_forest_runner()
 # ── Utility imports ─────────────────────────────────────────────────────────
 from utils.raster_utils  import load_band_crop, load_cloud_mask, save_raster
 from utils.stats_utils   import compute_change_statistics, export_statistics_csv
-from utils.visualization import (
-    render_change_map_in_qgis,
-    render_cva_map_in_qgis,
-)
 
 # ── Crop to use for all band loading (memory-safe for development) ──────────
 CROP = dict(x_off=4000, y_off=4000, x_size=2000, y_size=2000)
@@ -109,8 +105,10 @@ class AnalysisWorker(QObject):
 
             def load_sibling(base_dir, band_suffix):
                 """Load a sibling band from the same directory."""
-                files = [f for f in os.listdir(base_dir)
-                         if band_suffix in f and f.endswith(".jp2")]
+                files = sorted(
+                    f for f in os.listdir(base_dir)
+                    if band_suffix in f and f.endswith(".jp2")
+                )
                 if not files:
                     raise FileNotFoundError(
                         f"Could not find band '{band_suffix}' in {base_dir}"
@@ -207,6 +205,11 @@ class AnalysisWorker(QObject):
                 )
             else:
                 raise ValueError(f"Unknown method: {method}")
+
+            # Normalize algorithm output so downstream export/render code can
+            # always rely on a shared key.
+            if "change_mask" not in results and "change_map" in results:
+                results["change_mask"] = results["change_map"].astype(bool)
 
             self.progress.emit(75)
 
@@ -411,7 +414,12 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
             self._show_error("Please select an output folder.")
             return False
 
-        if self.checkCloudMask.isChecked() and scl:
+        if self.checkCloudMask.isChecked():
+            if not scl:
+                self._show_error(
+                    "Cloud masking is enabled. Please select an SCL cloud mask file."
+                )
+                return False
             if not os.path.isfile(scl):
                 self._show_error(f"SCL cloud mask not found:\n{scl}")
                 return False

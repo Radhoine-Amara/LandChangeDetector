@@ -1,0 +1,14 @@
+method,metric,value,unit
+NDVI Differencing,total_pixels,4000000.0,px
+NDVI Differencing,changed_pixels,448682.0,px
+NDVI Differencing,unchanged_pixels,3551318.0,px
+NDVI Differencing,change_pct,13.5182,%
+NDVI Differencing,threshold,0.101454,
+NDVI Differencing,ndvi_before_mean,0.164631,
+NDVI Differencing,ndvi_after_mean,0.100557,
+NDVI Differencing,delta_ndvi_mean,-0.064074,
+NDVI Differencing,delta_ndvi_std,0.051049,
+NDVI Differencing,ndvi_before_std,0.077078,
+NDVI Differencing,ndvi_after_std,0.063868,
+NDVI Differencing,vegetation_gain_pct,0.3977,%
+NDVI Differencing,vegetation_loss_pct,13.969,%
