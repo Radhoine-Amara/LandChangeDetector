@@ -1,5 +1,5 @@
-method,change_pct,changed_pixels,total_pixels,threshold,ndvi_gain_pct,ndvi_loss_pct,delta_ndvi_mean,cva_vegetation_loss_pct,cva_vegetation_gain_pct,cva_urban_soil_gain_pct,cva_water_shadow_pct,rf_accuracy_pct
-Band Differencing,35.4041,1175098,4000000,675.979248,,,,,,,,
-NDVI Differencing,13.5182,448682,4000000,0.101454,0.3977,13.969,-0.064074,,,,,
-CVA,24.4073,810102,4000000,1124.332153,,,,1.0781,0.2044,20.9762,2.1486,
-Random Forest,50.1644,1665008,4000000,,,,,,,,,
+method,change_pct,changed_pixels,total_pixels,threshold,ndvi_gain_pct,ndvi_loss_pct,delta_ndvi_mean,cva_vegetation_loss_pct,cva_vegetation_gain_pct,cva_urban_soil_gain_pct,cva_water_shadow_pct,rf_accuracy_pct,rf_stable_vegetation_pct,rf_stable_bare_soil_/_urban_pct,rf_stable_water_/_shadow_pct,rf_stable_sparse_vegetation_pct
+Band Differencing,35.4041,1175098,4000000,675.979248,,,,,,,,,,,,
+NDVI Differencing,13.5182,448682,4000000,0.101454,0.3977,13.969,-0.064074,,,,,,,,,
+CVA,24.4073,810102,4000000,1124.332153,,,,1.0781,0.2044,20.9762,2.1486,,,,,
+Random Forest,36.4412,1209520,4000000,,,,,,,,,68.34,70.43,56.89,0.0,59.98

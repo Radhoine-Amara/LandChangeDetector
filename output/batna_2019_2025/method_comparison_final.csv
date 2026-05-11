@@ -1,0 +1,6 @@
+Method,Change %,Changed Area,Threshold,Accuracy,Reliability,Best use
+Band Differencing,35.40%,142 km²,675.98,N/A,⚠️  Low (seasonal noise dominant),Quick screen only
+NDVI Differencing ⭐,13.52%,54 km²,±0.1015,N/A (reference method),✅ HIGH — physical anchor,Primary result for thesis
+CVA,24.41%,98 km²,1124.33,N/A,⚠️  Medium (Veg loss credible; soil gain artefact),Change type characterisation
+Random Forest (Supervised (WorldCover)),36.44%,146 km²,N/A,0.593±0.056 (spatial CV macro-F1),✅ HIGH (supervised + spatial CV),Transition matrix (supervised only)
+Consensus (NDVI+RF+CVA+BD),13.70%,55 km²,"w={'NDVI': 0.45, 'RF': 0.3, 'CVA': 0.2, 'BD': 0.05}",N/A,✅ HIGH (multi-method agreement),Final reportable estimate
