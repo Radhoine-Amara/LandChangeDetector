@@ -24,9 +24,50 @@ Usage
 """
 
 import os
+import platform
 import numpy as np
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List
+
+
+def _find_data_root() -> Path:
+    """Auto-discover data directory across machines and OS."""
+
+    # Priority 1: Environment variable
+    env_path = os.environ.get('LAND_CHANGE_DATA')
+    if env_path and Path(env_path).exists():
+        return Path(env_path)
+
+    # Priority 2: Relative to this file's location (utils/ -> project root)
+    here = Path(__file__).parent.parent
+    candidate = here / 'data'
+    if candidate.exists():
+        return candidate
+
+    # Priority 3: Relative to current working directory
+    candidate = Path.cwd() / 'data'
+    if candidate.exists():
+        return candidate
+
+    # Priority 4: Machine-specific hardcoded fallback
+    if platform.system() == 'Windows':
+        fallback = Path(r'D:\School Shit\Semester 6\Group Project\land_change_detector\data')
+    else:
+        fallback = Path('/home/darius/qgis_projects/land_change_detector/data')
+
+    if fallback.exists():
+        print(f"WARNING: Using hardcoded fallback path: {fallback}")
+        print("    Set LAND_CHANGE_DATA env var to avoid this warning.")
+        return fallback
+
+    raise FileNotFoundError(
+        "Could not find data directory. "
+        "Set the LAND_CHANGE_DATA environment variable to your data folder path."
+    )
+
+
+DATA_ROOT = _find_data_root()
 
 
 @dataclass
@@ -72,7 +113,6 @@ class ImagePairConfig:
     season_after : str   = ''
 
     def __post_init__(self):
-        # Expand ~ in all path fields
         for attr in ['B02_B','B03_B','B04_B','B08_B','SCL_B',
                      'B02_A','B03_A','B04_A','B08_A','SCL_A',
                      'output_dir']:
@@ -179,7 +219,7 @@ class ImagePairConfig:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_pair_config(pair_name: str,
-                    data_root: str = '~/Downloads/sentinel2') -> ImagePairConfig:
+                    data_root: Optional[str] = None) -> ImagePairConfig:
     """
     Return a pre-built ImagePairConfig for the specified pair.
 
@@ -188,51 +228,36 @@ def get_pair_config(pair_name: str,
     pair_name : str
         'cross_seasonal'  — June 2019 vs August 2025  (existing project pair)
         'same_season'     — June 2019 vs June/July 2024  (new validation pair)
-        'same_season_v2'  — if a second same-season candidate is found
-    data_root : str
+    data_root : str or None
         Root directory where Sentinel-2 SAFE folders are stored.
+        Defaults to DATA_ROOT auto-discovered above.
 
     Returns
     -------
     ImagePairConfig
     """
-    root = os.path.expanduser(data_root)
+    root = Path(data_root) if data_root else DATA_ROOT
 
-    # ── Helper to build SAFE path ─────────────────────────────────────────
-    def safe_band(safe_folder, date_str, band, res='R10m'):
-        """
-        Build the path to a specific band file inside a .SAFE archive.
-
-        Sentinel-2 SAFE structure:
-        S2B_MSIL2A_<date>_<orbit>_<tile>_<ver>.SAFE/
-          GRANULE/<granule_id>/
-            IMG_DATA/
-              R10m/  → B02, B03, B04, B08
-              R20m/  → B05, B06, B07, B8A, B11, B12, SCL
-        """
-        safe_path = os.path.join(root, safe_folder)
-        granule_dir = os.path.join(safe_path, 'GRANULE')
-        if not os.path.exists(granule_dir):
-            # Return placeholder path — will fail check_files() with clear message
-            return os.path.join(safe_path, f'GRANULE/???/IMG_DATA/{res}/{band}.jp2')
-        granules = [d for d in os.listdir(granule_dir)
-                    if os.path.isdir(os.path.join(granule_dir, d))]
+    def safe_band(safe_folder: str, date_str: str, band: str, res: str = 'R10m') -> str:
+        """Build path to a specific band inside a .SAFE archive."""
+        safe_path = root / safe_folder
+        granule_dir = safe_path / 'GRANULE'
+        if not granule_dir.exists():
+            return str(safe_path / 'GRANULE' / '???' / 'IMG_DATA' / res / f'{band}.jp2')
+        granules = [d for d in granule_dir.iterdir() if d.is_dir()]
         if not granules:
-            return os.path.join(safe_path, f'GRANULE/???/IMG_DATA/{res}/{band}.jp2')
-        granule  = granules[0]
-        img_data = os.path.join(granule_dir, granule, 'IMG_DATA', res)
-        matches  = [f for f in os.listdir(img_data)
-                    if band in f and f.endswith('.jp2')] \
-                   if os.path.exists(img_data) else []
-        if matches:
-            return os.path.join(img_data, matches[0])
-        return os.path.join(img_data, f'T31SGV_{date_str}_{band}_10m.jp2')
+            return str(safe_path / 'GRANULE' / '???' / 'IMG_DATA' / res / f'{band}.jp2')
+        img_data = granules[0] / 'IMG_DATA' / res
+        if img_data.exists():
+            matches = [f for f in img_data.iterdir()
+                       if band in f.name and f.suffix == '.jp2']
+            if matches:
+                return str(matches[0])
+        return str(img_data / f'T31SGV_{date_str}_{band}_10m.jp2')
 
     WC_PATHS = [
-        os.path.join(root, 'worldcover',
-                     'ESA_WorldCover_10m_2021_v200_N33E006_Map.tif'),
-        os.path.join(root, 'worldcover',
-                     'ESA_WorldCover_10m_2021_v200_N33E003_Map.tif'),
+        str(root / 'worldcover' / 'ESA_WorldCover_10m_2021_v200_N33E006_Map.tif'),
+        str(root / 'worldcover' / 'ESA_WorldCover_10m_2021_v200_N33E003_Map.tif'),
     ]
 
     # ── Cross-seasonal pair (existing project pair) ───────────────────────
@@ -253,27 +278,18 @@ def get_pair_config(pair_name: str,
             B08_A = safe_band(SAFE_A, '20250828T103559', 'B08'),
             SCL_A = safe_band(SAFE_A, '20250828T103559', 'SCL', 'R20m'),
             worldcover_paths = [p for p in WC_PATHS if os.path.exists(p)] or None,
-            output_dir  = 'output/cross_seasonal_2019_2025',
+            output_dir  = str(Path('output') / 'cross_seasonal_2019_2025'),
             date_before = '2019-06-01',
             date_after  = '2025-08-28',
             season_before = 'Late spring (peak greenness)',
             season_after  = 'Late summer (dry season)',
         )
 
-    # ── Same-season pair (new validation pair — update SAFE name after download) ──
+    # ── Same-season pair (new validation pair) ────────────────────────────
     elif pair_name == 'same_season':
-        # UPDATE THESE LINES after downloading the new image.
-        # Find the actual SAFE folder name in your Downloads directory and
-        # replace the placeholder below.
-        #
-        # Expected filename format:
-        #   S2B_MSIL2A_20240615T103629_N0511_R008_T31SGV_<proc_date>.SAFE
-        #
-        # To find it:
-        #   ls ~/Downloads/sentinel2/S2*_20240*T31SGV*.SAFE
-        #
+        SAFE_B    = 'S2B_MSIL2A_20190601T103629_N0500_R008_T31SGV_20230601T000000.SAFE'
         SAFE_SAME = 'S2B_MSIL2A_20240615T103629_N0511_R008_T31SGV_REPLACE_ME.SAFE'
-        DATE_SAME = '20240615T103629'   # UPDATE to match actual filename
+        DATE_SAME = '20240615T103629'
 
         return ImagePairConfig(
             name        = 'Same-Season (Jun 2019 vs Jun 2024)',
@@ -289,7 +305,7 @@ def get_pair_config(pair_name: str,
             B08_A = safe_band(SAFE_SAME, DATE_SAME, 'B08'),
             SCL_A = safe_band(SAFE_SAME, DATE_SAME, 'SCL', 'R20m'),
             worldcover_paths = [p for p in WC_PATHS if os.path.exists(p)] or None,
-            output_dir  = 'output/same_season_2019_2024',
+            output_dir  = str(Path('output') / 'same_season_2019_2024'),
             date_before = '2019-06-01',
             date_after  = f'20{DATE_SAME[2:8]}',
             season_before = 'Late spring (peak greenness)',
@@ -316,20 +332,6 @@ def run_seasonal_comparison_experiment(cross_pair_config, same_pair_config,
       - Spatial CV macro-F1 (per pair)
       - NDVI-RF Jaccard (per pair)
       - Feature importance rankings (does NDWI drop for same-season?)
-
-    This is the key experiment to quantify how much of the RF's
-    overestimation is due to the seasonal spectral mismatch vs
-    genuine classification error.
-
-    Parameters
-    ----------
-    cross_pair_config : ImagePairConfig  cross-seasonal pair
-    same_pair_config  : ImagePairConfig  same-season pair
-    ...
-
-    Returns
-    -------
-    comparison_df : pd.DataFrame   side-by-side results table
     """
     import pandas as pd
     from algorithms.random_forest import run_random_forest
@@ -350,11 +352,9 @@ def run_seasonal_comparison_experiment(cross_pair_config, same_pair_config,
 
         bands_b, bands_a, valid_both = cfg.load_bands_and_mask()
 
-        # NDVI (reference anchor)
         ndvi_res = run_ndvi_differencing(bands_b[2], bands_b[3],
                                           bands_a[2], bands_a[3])
 
-        # RF (upgraded pipeline)
         rf_res = run_random_forest(
             bands_before=bands_b,
             bands_after=bands_a,
@@ -380,7 +380,6 @@ def run_seasonal_comparison_experiment(cross_pair_config, same_pair_config,
             'valid_both'         : valid_both,
         }
 
-        # Compute Jaccard
         ndvi_mask = ndvi_res.get('change_mask')
         rf_mask   = rf_res.get('change_mask')
         if ndvi_mask is not None and rf_mask is not None:
@@ -397,14 +396,13 @@ def run_seasonal_comparison_experiment(cross_pair_config, same_pair_config,
         print("No pairs could be loaded. Check file paths in the configs.")
         return None
 
-    # ── Print side-by-side comparison ────────────────────────────────────
     print("\n" + "=" * 80)
     print("SEASONAL COMPARISON EXPERIMENT RESULTS")
     print("=" * 80)
 
     rows = []
     for pair_name, r in results.items():
-        f1_str  = (f"{r['spatial_cv_f1']:.4f} ± {r['spatial_cv_std']:.4f}"
+        f1_str  = (f"{r['spatial_cv_f1']:.4f} +/- {r['spatial_cv_std']:.4f}"
                    if r['spatial_cv_f1'] is not None else "N/A")
         jac_str = (f"{r['ndvi_rf_jaccard']:.4f}"
                    if r['ndvi_rf_jaccard'] is not None else "N/A")
@@ -421,7 +419,6 @@ def run_seasonal_comparison_experiment(cross_pair_config, same_pair_config,
     df = pd.DataFrame(rows)
     print(df.to_string(index=False))
 
-    # Feature importance comparison
     if len(results) == 2:
         pair_names = list(results.keys())
         fi_cross = results[pair_names[0]].get('feature_importance', {})
@@ -435,24 +432,20 @@ def run_seasonal_comparison_experiment(cross_pair_config, same_pair_config,
             for feat in all_feats:
                 fc = fi_cross.get(feat, 0)
                 fs = fi_same.get(feat, 0)
-                marker = " ← NDWI" if feat == 'NDWI' else ""
+                marker = " <- NDWI" if feat == 'NDWI' else ""
                 print(f"  {feat:<14} {fc*100:>12.2f}%  {fs*100:>12.2f}%  "
                       f"{(fs-fc)*100:>+.2f}pp{marker}")
 
-            # Interpretation
             ndwi_cross = fi_cross.get('NDWI', 0)
             ndwi_same  = fi_same.get('NDWI', 0)
             delta_ndwi = ndwi_same - ndwi_cross
             print(f"\nNDWI importance: {ndwi_cross*100:.2f}% (cross) "
-                  f"→ {ndwi_same*100:.2f}% (same-season)  "
+                  f"-> {ndwi_same*100:.2f}% (same-season)  "
                   f"[{delta_ndwi*100:+.2f} pp]")
             if delta_ndwi < -0.03:
                 print("  CONFIRMED: NDWI drops substantially in same-season pair.")
-                print("  This validates the hypothesis that NDWI was encoding")
-                print("  seasonal moisture shift in the cross-seasonal pair.")
             elif abs(delta_ndwi) < 0.03:
                 print("  INCONCLUSIVE: NDWI importance is stable across seasons.")
-                print("  NDWI may be capturing real land-cover information.")
             else:
                 print("  UNEXPECTED: NDWI importance increased for same-season pair.")
 

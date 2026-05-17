@@ -19,10 +19,17 @@ Author: Darius — 3rd Year AI Engineering
 
 import os
 
-from PyQt5.QtGui    import QIcon
+from PyQt5.QtGui     import QColor, QIcon
 from PyQt5.QtWidgets import QAction
 
-from qgis.core import QgsMessageLog, Qgis
+from qgis.core import (
+    QgsColorRampShader,
+    QgsMessageLog,
+    QgsProject,
+    QgsRasterLayer,
+    QgsSingleBandPseudoColorRenderer,
+    Qgis,
+)
 
 
 PLUGIN_DIR = os.path.dirname(__file__)
@@ -150,6 +157,7 @@ class LandChangeDetector:
                 iface=self.iface,
                 parent=self.iface.mainWindow()
             )
+            self.dialog.analysis_complete.connect(self._on_analysis_complete)
             QgsMessageLog.logMessage(
                 "LandChangeDetectorDialog created.", LOG_TAG, Qgis.Info
             )
@@ -162,6 +170,38 @@ class LandChangeDetector:
     # ─────────────────────────────────────────────────────────────
     # ABOUT
     # ─────────────────────────────────────────────────────────────
+
+    def _on_analysis_complete(self, result_path: str):
+        """Load the result GeoTIFF into QGIS canvas with a grey/red colour ramp."""
+        if not result_path or not os.path.isfile(result_path):
+            return
+
+        layer = QgsRasterLayer(result_path, "Change Detection Result")
+        if not layer.isValid():
+            QgsMessageLog.logMessage(
+                f"Could not load result layer: {result_path}", LOG_TAG, Qgis.Warning
+            )
+            return
+
+        shader = QgsColorRampShader()
+        shader.setColorRampType(QgsColorRampShader.Exact)
+        shader.setColorRampItemList([
+            QgsColorRampShader.ColorRampItem(0, QColor("#aaaaaa"), "No Change"),
+            QgsColorRampShader.ColorRampItem(1, QColor("#e63946"), "Change"),
+        ])
+
+        renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1)
+        renderer.setClassificationMin(0)
+        renderer.setClassificationMax(1)
+        renderer.setShader(shader)
+        layer.setRenderer(renderer)
+
+        QgsProject.instance().addMapLayer(layer)
+        self.iface.mapCanvas().refresh()
+
+        QgsMessageLog.logMessage(
+            "Change Detection Result layer added to canvas.", LOG_TAG, Qgis.Info
+        )
 
     def show_about(self):
         """Show a simple About message box."""

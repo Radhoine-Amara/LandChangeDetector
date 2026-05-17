@@ -1,22 +1,22 @@
 """
 land_change_detector_dialog.py
-LandChangeDetector — Phase 4 + Phase 6
+LandChangeDetector — Phase 6
 
 UI controller: connects the Qt dialog to the algorithm backend.
-This file handles all button signals, validation, algorithm dispatch,
-progress updates, and result rendering.
+Handles file browsing, input validation, QThread dispatch,
+progress updates, log output, and QGIS layer loading.
 
 Author: Darius — 3rd Year AI Engineering
 """
 
 import os
 import traceback
-import importlib
+import datetime
+from pathlib import Path
+
 import numpy as np
 
-from PyQt5.QtWidgets import (
-    QDialog, QFileDialog, QMessageBox, QApplication
-)
+from PyQt5.QtWidgets import QDialog, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt5.uic import loadUiType
 
@@ -39,55 +39,52 @@ FORM_CLASS, _ = loadUiType(
 from algorithms.band_differencing import run_band_differencing
 from algorithms.ndvi_differencing  import run_ndvi_differencing
 from algorithms.cva                import run_cva
-
-
-def _load_random_forest_runner():
-    """Resolve the Random Forest runner from either supported module name."""
-    for module_name in ("algorithms.random_forst", "algorithms.random_forest"):
-        try:
-            module = importlib.import_module(module_name)
-            return getattr(module, "run_random_forest", None)
-        except ImportError:
-            continue
-    return None
-
-
-run_random_forest = _load_random_forest_runner()
+from algorithms.rf_improvements    import (run_binary_rf,
+                                           apply_majority_filter_and_compare)
 
 # ── Utility imports ─────────────────────────────────────────────────────────
-from utils.raster_utils  import load_band_crop, load_cloud_mask, save_raster
-from utils.stats_utils   import compute_change_statistics, export_statistics_csv
-
-# ── Crop to use for all band loading (memory-safe for development) ──────────
-CROP = dict(x_off=4000, y_off=4000, x_size=2000, y_size=2000)
-SCL_CROP = dict(x_off=2000, y_off=2000, x_size=1000, y_size=1000)
+from utils.raster_utils import load_band_crop, load_cloud_mask, save_raster
+from utils.stats_utils  import compute_change_statistics, export_statistics_csv
 
 LOG_TAG = "LandChangeDetector"
 
 
+def _ts():
+    """Return current timestamp string for log messages."""
+    return datetime.datetime.now().strftime("%H:%M:%S")
+
+
+def _derive_band_path(b04_path: str, target_band: str) -> str:
+    """
+    Derive sibling band path from a B04 path by replacing '_B04_' with
+    '_B02_', '_B03_', or '_B08_'.
+    """
+    return b04_path.replace("_B04_", f"_{target_band}_")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-# WORKER — runs the algorithm in a background thread so QGIS UI doesn't freeze
+# WORKER — runs the algorithm in a background thread
 # ═══════════════════════════════════════════════════════════════════════════
 
 class AnalysisWorker(QObject):
     """
     Background worker that runs the selected algorithm.
-    Emits progress(int), status(str), finished(dict), error(str).
+    Emits progress(int), log(str), finished(dict), error(str).
     """
     progress = pyqtSignal(int)
-    status   = pyqtSignal(str)
+    log      = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error    = pyqtSignal(str)
 
-    def __init__(self, params):
+    def __init__(self, params: dict):
         """
         Parameters
         ----------
         params : dict with keys:
-            before_path, after_path, scl_path (or None),
-            method, threshold (float or None),
-            smooth, cloud_mask_enabled,
-            output_dir, export_geotiff, export_csv
+            before_path, after_path,
+            scl_before_path, scl_after_path,
+            method, cloud_mask_enabled, crop_size,
+            output_dir
         """
         super().__init__()
         self.params = params
@@ -95,158 +92,155 @@ class AnalysisWorker(QObject):
     def run(self):
         try:
             p = self.params
+            crop_size = p["crop_size"]
 
-            # ── Step 1: Load bands ─────────────────────────────────────────
-            self.status.emit("Loading before image bands...")
-            self.progress.emit(5)
+            CROP = dict(x_off=4000, y_off=4000,
+                        x_size=crop_size, y_size=crop_size)
+            SCL_CROP = dict(x_off=CROP["x_off"] // 2, y_off=CROP["y_off"] // 2,
+                            x_size=crop_size // 2,    y_size=crop_size // 2)
 
-            before_dir = os.path.dirname(p["before_path"])
-            after_dir  = os.path.dirname(p["after_path"])
+            # ── Step 1: Load bands (0% → 20%) ─────────────────────────────
+            self.log.emit(f"[{_ts()}] Loading before image bands...")
+            self.progress.emit(0)
 
-            def load_sibling(base_dir, band_suffix):
-                """Load a sibling band from the same directory."""
-                files = sorted(
-                    f for f in os.listdir(base_dir)
-                    if band_suffix in f and f.endswith(".jp2")
-                )
-                if not files:
-                    raise FileNotFoundError(
-                        f"Could not find band '{band_suffix}' in {base_dir}"
-                    )
-                return load_band_crop(
-                    os.path.join(base_dir, files[0]), **CROP
-                )
+            b04_before = p["before_path"]
+            b04_after  = p["after_path"]
 
-            # Before bands
-            red_b,   gt, proj = load_band_crop(p["before_path"], **CROP)
-            green_b, _,  _    = load_sibling(before_dir, "B03_10m")
-            blue_b,  _,  _    = load_sibling(before_dir, "B02_10m")
-            nir_b,   _,  _    = load_sibling(before_dir, "B08_10m")
+            def load(path):
+                d, gt, proj = load_band_crop(path, **CROP)
+                return d.astype(np.float32), gt, proj
 
-            self.status.emit("Loading after image bands...")
-            self.progress.emit(15)
+            red_b, gt, proj = load(b04_before)
+            nir_b, _,  _    = load(_derive_band_path(b04_before, "B08"))
+            grn_b, _,  _    = load(_derive_band_path(b04_before, "B03"))
+            blu_b, _,  _    = load(_derive_band_path(b04_before, "B02"))
 
-            # After bands
-            red_a,   _,  _    = load_band_crop(p["after_path"], **CROP)
-            green_a, _,  _    = load_sibling(after_dir, "B03_10m")
-            blue_a,  _,  _    = load_sibling(after_dir, "B02_10m")
-            nir_a,   _,  _    = load_sibling(after_dir, "B08_10m")
+            self.log.emit(f"[{_ts()}] Loading after image bands...")
 
-            # ── Step 2: Cloud masking ──────────────────────────────────────
-            if p["cloud_mask_enabled"] and p["scl_path"]:
-                self.status.emit("Applying cloud mask (SCL)...")
-                self.progress.emit(25)
+            red_a, _,  _    = load(b04_after)
+            nir_a, _,  _    = load(_derive_band_path(b04_after, "B08"))
+            grn_a, _,  _    = load(_derive_band_path(b04_after, "B03"))
+            blu_a, _,  _    = load(_derive_band_path(b04_after, "B02"))
+
+            self.progress.emit(20)
+            self.log.emit(f"[{_ts()}] Bands loaded. Crop: {crop_size}x{crop_size} px")
+
+            # ── Step 2: Cloud masking (20% → 40%) ─────────────────────────
+            target_size = (crop_size, crop_size)
+
+            if p["cloud_mask_enabled"]:
+                self.log.emit(f"[{_ts()}] Applying cloud masks (SCL)...")
 
                 _, valid_b = load_cloud_mask(
-                    p["scl_path"], **SCL_CROP, target_size=red_b.shape
+                    p["scl_before_path"], target_size=target_size, **SCL_CROP
                 )
-                # After image: assume cloud-free if no second SCL provided
-                valid_both = valid_b
+                _, valid_a = load_cloud_mask(
+                    p["scl_after_path"],  target_size=target_size, **SCL_CROP
+                )
+                valid_both = valid_b & valid_a
+
+                n_valid = int(valid_both.sum())
+                pct     = n_valid / valid_both.size * 100
+                self.log.emit(
+                    f"[{_ts()}] Valid pixels: {n_valid:,} / {valid_both.size:,} "
+                    f"({pct:.1f}%)"
+                )
             else:
-                valid_both = np.ones(red_b.shape, dtype=bool)
+                valid_both = np.ones(target_size, dtype=bool)
+                self.log.emit(f"[{_ts()}] Cloud masking disabled — using all pixels.")
 
-            self.progress.emit(30)
+            self.progress.emit(40)
 
-            # Apply mask (NaN = cloudy)
+            # Apply mask (NaN = cloud / no-data)
             def mask(arr):
                 return np.where(valid_both, arr, np.nan).astype(np.float32)
 
-            red_b_m   = mask(red_b)
-            green_b_m = mask(green_b)
-            blue_b_m  = mask(blue_b)
-            nir_b_m   = mask(nir_b)
-            red_a_m   = mask(red_a)
-            green_a_m = mask(green_a)
-            blue_a_m  = mask(blue_a)
-            nir_a_m   = mask(nir_a)
+            red_b = mask(red_b); nir_b = mask(nir_b)
+            grn_b = mask(grn_b); blu_b = mask(blu_b)
+            red_a = mask(red_a); nir_a = mask(nir_a)
+            grn_a = mask(grn_a); blu_a = mask(blu_a)
 
-            threshold = p["threshold"]   # None = auto (Otsu)
-            smooth    = p["smooth"]
-
-            # ── Step 3: Run selected algorithm ─────────────────────────────
+            # ── Step 3: Run selected algorithm (40% → 60%) ────────────────
             method = p["method"]
-            self.status.emit(f"Running {method}...")
-            self.progress.emit(35)
+            self.log.emit(f"[{_ts()}] Running {method}...")
+            self.progress.emit(40)
 
-            if method == "Band Differencing":
-                results = run_band_differencing(
-                    red_b_m, red_a_m,
-                    threshold=threshold,
-                    smooth=smooth
-                )
+            if method == "NDVI Differencing":
+                results = run_ndvi_differencing(red_b, nir_b, red_a, nir_a)
 
-            elif method == "NDVI Differencing":
-                results = run_ndvi_differencing(
-                    red_b_m, nir_b_m, red_a_m, nir_a_m,
-                    threshold=threshold,
-                    smooth=smooth
-                )
+            elif method == "Band Differencing":
+                results = run_band_differencing(red_b, red_a)
 
-            elif method == "Change Vector Analysis (CVA)":
+            elif method == "CVA":
                 results = run_cva(
-                    bands_before=[blue_b_m, green_b_m, red_b_m, nir_b_m],
-                    bands_after =[blue_a_m, green_a_m, red_a_m, nir_a_m],
+                    bands_before=[blu_b, grn_b, red_b, nir_b],
+                    bands_after =[blu_a, grn_a, red_a, nir_a],
                     band_names  =["B02", "B03", "B04", "B08"],
-                    threshold=threshold,
-                    smooth=smooth
                 )
 
-            elif method == "Random Forest (Post-Classification)":
-                if run_random_forest is None:
-                    raise ImportError(
-                        "Random Forest method is unavailable: could not import "
-                        "algorithms.random_forest or algorithms.random_forst."
-                    )
-                results = run_random_forest(
-                    bands_before=[blue_b_m, green_b_m, red_b_m, nir_b_m],
-                    bands_after =[blue_a_m, green_a_m, red_a_m, nir_a_m],
-                    n_classes=4,
-                    n_train_samples=5000
+            elif method == "Binary RF + Smoothing":
+                bands_before = [blu_b, grn_b, red_b, nir_b]
+                bands_after  = [blu_a, grn_a, red_a, nir_a]
+                rf_results   = run_binary_rf(
+                    bands_before=bands_before,
+                    bands_after =bands_after,
+                    worldcover_path=None,
+                    wc_crop=CROP,
+                    reference_band_path=b04_before,
                 )
+                smoothed = apply_majority_filter_and_compare(
+                    rf_results["class_before"],
+                    rf_results["class_after"],
+                    rf_results.get("valid_mask", valid_both),
+                    window=5,
+                )
+                results = {**rf_results, **smoothed,
+                           "change_mask": smoothed["change_mask"],
+                           "change_pct":  smoothed["change_pct"]}
             else:
-                raise ValueError(f"Unknown method: {method}")
+                raise ValueError(f"Unknown method: {method!r}")
 
-            # Normalize algorithm output so downstream export/render code can
-            # always rely on a shared key.
+            # Normalise key
             if "change_mask" not in results and "change_map" in results:
                 results["change_mask"] = results["change_map"].astype(bool)
 
-            self.progress.emit(75)
+            change_pct = results.get("change_pct", 0.0)
+            self.log.emit(
+                f"[{_ts()}] {method} complete — change: {change_pct:.2f}%"
+            )
+            self.progress.emit(60)
 
-            # ── Step 4: Save outputs ───────────────────────────────────────
-            out_dir = p["output_dir"]
-            os.makedirs(out_dir, exist_ok=True)
+            # ── Step 4: Save outputs (60% → 80%) ──────────────────────────
+            self.log.emit(f"[{_ts()}] Saving outputs...")
 
-            safe_method = method.replace(" ", "_").replace("(", "").replace(")", "")
-            geotiff_path = os.path.join(out_dir, f"change_map_{safe_method}.tif")
-            csv_path     = os.path.join(out_dir, f"statistics_{safe_method}.csv")
+            out_dir = Path(p["output_dir"])
+            out_dir.mkdir(parents=True, exist_ok=True)
 
-            if p["export_geotiff"]:
-                self.status.emit("Saving GeoTIFF...")
-                self.progress.emit(82)
-                save_raster(
-                    geotiff_path,
-                    results["change_mask"].astype(np.float32),
-                    gt, proj
-                )
+            safe_method  = method.replace(" ", "_").replace("+", "").replace("__", "_")
+            geotiff_path = str(out_dir / f"change_map_{safe_method}.tif")
+            csv_path     = str(out_dir / f"statistics_{safe_method}.csv")
 
-            if p["export_csv"]:
-                self.status.emit("Exporting statistics CSV...")
-                self.progress.emit(90)
-                stats_df = compute_change_statistics(results, method)
-                export_statistics_csv(stats_df, csv_path)
+            save_raster(geotiff_path,
+                        results["change_mask"].astype(np.float32),
+                        gt, proj)
+            self.log.emit(f"[{_ts()}] GeoTIFF saved: {geotiff_path}")
+
+            self.progress.emit(80)
+
+            stats_df = compute_change_statistics(results, method)
+            export_statistics_csv(stats_df, csv_path)
+            self.log.emit(f"[{_ts()}] CSV saved:     {csv_path}")
 
             self.progress.emit(100)
-            self.status.emit("Done.")
+            self.log.emit(f"[{_ts()}] Done.")
 
-            # Return everything the dialog needs to render the result
             self.finished.emit({
-                "results":      results,
-                "method":       method,
+                "results":       results,
+                "method":        method,
                 "geo_transform": gt,
-                "projection":   proj,
-                "geotiff_path": geotiff_path if p["export_geotiff"] else None,
-                "csv_path":     csv_path     if p["export_csv"]     else None,
+                "projection":    proj,
+                "geotiff_path":  geotiff_path,
+                "csv_path":      csv_path,
             })
 
         except Exception as exc:
@@ -256,31 +250,23 @@ class AnalysisWorker(QObject):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# MAIN DIALOG CLASS
+# MAIN DIALOG
 # ═══════════════════════════════════════════════════════════════════════════
 
 class LandChangeDetectorDialog(QDialog, FORM_CLASS):
-    """
-    Main plugin dialog.
+    """Main plugin dialog."""
 
-    Connects every widget signal to a handler, validates inputs,
-    dispatches the worker thread, and renders results in QGIS.
-    """
+    # Emitted after a successful run so the plugin can add the layer
+    analysis_complete = pyqtSignal(str)
 
     def __init__(self, iface, parent=None):
-        """
-        Parameters
-        ----------
-        iface  : QgsInterface — QGIS interface object (passed from plugin entry point)
-        parent : QWidget or None
-        """
         super().__init__(parent)
         self.setupUi(self)
         self.iface = iface
 
-        self._worker  = None
-        self._thread  = None
-        self._last_results = None   # store last run results for later use
+        self._worker       = None
+        self._thread       = None
+        self._last_output  = None
 
         self._connect_signals()
         self._set_initial_state()
@@ -290,24 +276,15 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
     # ─────────────────────────────────────────────────────────────
 
     def _connect_signals(self):
-        # Browse buttons
         self.btnBrowseBefore.clicked.connect(self._browse_before)
         self.btnBrowseAfter.clicked.connect(self._browse_after)
-        self.btnBrowseSCL.clicked.connect(self._browse_scl)
-        self.btnBrowseOutput.clicked.connect(self._browse_output)
+        self.btnBrowseSCLBefore.clicked.connect(self._browse_scl_before)
+        self.btnBrowseSCLAfter.clicked.connect(self._browse_scl_after)
 
-        # Threshold radio buttons
-        self.radioThresholdAuto.toggled.connect(self._on_threshold_mode_changed)
-        self.radioThresholdManual.toggled.connect(self._on_threshold_mode_changed)
-
-        # Cloud mask checkbox toggles SCL field
         self.checkCloudMask.toggled.connect(self._on_cloud_mask_toggled)
 
-        # Method change — update UI hints
-        self.comboMethod.currentIndexChanged.connect(self._on_method_changed)
-
-        # Run / Close
         self.btnRun.clicked.connect(self._run_analysis)
+        self.btnExport.clicked.connect(self._export_results)
         self.btnClose.clicked.connect(self.reject)
 
     # ─────────────────────────────────────────────────────────────
@@ -316,120 +293,84 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
 
     def _set_initial_state(self):
         self.progressBar.setValue(0)
-        self.spinThreshold.setEnabled(False)
-        self._set_status("Ready.")
-        self._on_method_changed(0)
+        self.btnExport.setEnabled(False)
+        self._on_cloud_mask_toggled(self.checkCloudMask.isChecked())
 
     # ─────────────────────────────────────────────────────────────
     # BROWSE HANDLERS
     # ─────────────────────────────────────────────────────────────
 
-    def _browse_before(self):
+    def _browse(self, line_edit, caption):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Before Image Band",
-            self.lineEditBefore.text() or os.path.expanduser("~"),
-            "Raster files (*.jp2 *.tif *.tiff);;All files (*)"
+            self, caption,
+            line_edit.text() or os.path.expanduser("~"),
+            "JP2 Files (*.jp2);;All Files (*)"
         )
         if path:
-            self.lineEditBefore.setText(path)
+            line_edit.setText(path)
+
+    def _browse_before(self):
+        self._browse(self.lineEditBefore, "Select Before Image (B04 .jp2)")
 
     def _browse_after(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select After Image Band",
-            self.lineEditAfter.text() or os.path.expanduser("~"),
-            "Raster files (*.jp2 *.tif *.tiff);;All files (*)"
-        )
-        if path:
-            self.lineEditAfter.setText(path)
+        self._browse(self.lineEditAfter, "Select After Image (B04 .jp2)")
 
-    def _browse_scl(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select SCL Cloud Mask",
-            self.lineEditSCL.text() or os.path.expanduser("~"),
-            "Raster files (*.jp2 *.tif *.tiff);;All files (*)"
-        )
-        if path:
-            self.lineEditSCL.setText(path)
+    def _browse_scl_before(self):
+        self._browse(self.lineEditSCLBefore, "Select SCL Before (cloud mask .jp2)")
 
-    def _browse_output(self):
-        path = QFileDialog.getExistingDirectory(
-            self, "Select Output Folder",
-            self.lineEditOutput.text() or os.path.expanduser("~")
-        )
-        if path:
-            self.lineEditOutput.setText(path)
+    def _browse_scl_after(self):
+        self._browse(self.lineEditSCLAfter, "Select SCL After (cloud mask .jp2)")
 
     # ─────────────────────────────────────────────────────────────
     # UI STATE HANDLERS
     # ─────────────────────────────────────────────────────────────
 
-    def _on_threshold_mode_changed(self):
-        """Enable the spin box only when Manual mode is selected."""
-        self.spinThreshold.setEnabled(self.radioThresholdManual.isChecked())
-
     def _on_cloud_mask_toggled(self, checked):
-        """Grey out the SCL field when cloud masking is disabled."""
-        self.lineEditSCL.setEnabled(checked)
-        self.btnBrowseSCL.setEnabled(checked)
-
-    def _on_method_changed(self, index):
-        """Update status bar hint when the user switches methods."""
-        hints = {
-            0: "Band Differencing — compares raw reflectance values.",
-            1: "NDVI Differencing — most reliable for vegetation change.",
-            2: "CVA — detects change type (vegetation/urban/water).",
-            3: "Random Forest — post-classification comparison.",
-        }
-        self._set_status(hints.get(index, ""))
+        self.lineEditSCLBefore.setEnabled(checked)
+        self.btnBrowseSCLBefore.setEnabled(checked)
+        self.lineEditSCLAfter.setEnabled(checked)
+        self.btnBrowseSCLAfter.setEnabled(checked)
 
     # ─────────────────────────────────────────────────────────────
     # VALIDATION
     # ─────────────────────────────────────────────────────────────
 
     def _validate(self):
-        """
-        Check all required fields are filled and files exist.
-        Returns True if valid, shows an error QMessageBox if not.
-        """
         before = self.lineEditBefore.text().strip()
         after  = self.lineEditAfter.text().strip()
-        out    = self.lineEditOutput.text().strip()
-        scl    = self.lineEditSCL.text().strip()
 
         if not before:
-            self._show_error("Please select a Before image band.")
+            self._show_error("Please select a Before image (B04 .jp2).")
             return False
         if not os.path.isfile(before):
             self._show_error(f"Before image not found:\n{before}")
             return False
 
         if not after:
-            self._show_error("Please select an After image band.")
+            self._show_error("Please select an After image (B04 .jp2).")
             return False
         if not os.path.isfile(after):
             self._show_error(f"After image not found:\n{after}")
             return False
 
-        if not out:
-            self._show_error("Please select an output folder.")
-            return False
-
         if self.checkCloudMask.isChecked():
-            if not scl:
-                self._show_error(
-                    "Cloud masking is enabled. Please select an SCL cloud mask file."
-                )
+            scl_b = self.lineEditSCLBefore.text().strip()
+            scl_a = self.lineEditSCLAfter.text().strip()
+            if not scl_b:
+                self._show_error("Cloud masking enabled — select SCL Before.")
                 return False
-            if not os.path.isfile(scl):
-                self._show_error(f"SCL cloud mask not found:\n{scl}")
+            if not os.path.isfile(scl_b):
+                self._show_error(f"SCL Before not found:\n{scl_b}")
+                return False
+            if not scl_a:
+                self._show_error("Cloud masking enabled — select SCL After.")
+                return False
+            if not os.path.isfile(scl_a):
+                self._show_error(f"SCL After not found:\n{scl_a}")
                 return False
 
-        if not self.checkExportGeoTIFF.isChecked() and \
-           not self.checkExportCSV.isChecked():
-            self._show_error(
-                "Please enable at least one export option\n"
-                "(GeoTIFF or CSV)."
-            )
+        if not self.comboMethod.currentText():
+            self._show_error("Please select a detection method.")
             return False
 
         return True
@@ -442,42 +383,37 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
         if not self._validate():
             return
 
-        # Build params dict
-        threshold = (
-            None if self.radioThresholdAuto.isChecked()
-            else self.spinThreshold.value()
-        )
-        scl_path = self.lineEditSCL.text().strip() or None
+        before  = self.lineEditBefore.text().strip()
+        out_dir = str(Path(before).parent / "output")
 
         params = {
-            "before_path":         self.lineEditBefore.text().strip(),
-            "after_path":          self.lineEditAfter.text().strip(),
-            "scl_path":            scl_path,
-            "method":              self.comboMethod.currentText(),
-            "threshold":           threshold,
-            "smooth":              self.checkSmooth.isChecked(),
-            "cloud_mask_enabled":  self.checkCloudMask.isChecked(),
-            "output_dir":          self.lineEditOutput.text().strip(),
-            "export_geotiff":      self.checkExportGeoTIFF.isChecked(),
-            "export_csv":          self.checkExportCSV.isChecked(),
+            "before_path":       before,
+            "after_path":        self.lineEditAfter.text().strip(),
+            "scl_before_path":   self.lineEditSCLBefore.text().strip() or None,
+            "scl_after_path":    self.lineEditSCLAfter.text().strip()  or None,
+            "method":            self.comboMethod.currentText(),
+            "cloud_mask_enabled": self.checkCloudMask.isChecked(),
+            "crop_size":         self.spinCropSize.value(),
+            "output_dir":        out_dir,
         }
 
-        # ── Disable UI during run ──────────────────────────────────────────
-        self._set_running(True)
+        self.textLog.clear()
+        self._log(f"Starting analysis: {params['method']}")
+        self._log(f"Crop size: {params['crop_size']} px")
         self.progressBar.setValue(0)
+        self.btnExport.setEnabled(False)
+        self.btnRun.setEnabled(False)
 
-        # ── Spin up background thread ──────────────────────────────────────
         self._thread = QThread()
         self._worker = AnalysisWorker(params)
         self._worker.moveToThread(self._thread)
 
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.progressBar.setValue)
-        self._worker.status.connect(self._set_status)
+        self._worker.log.connect(self._log)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
 
-        # Clean up thread when done
         self._worker.finished.connect(self._thread.quit)
         self._worker.error.connect(self._thread.quit)
         self._thread.finished.connect(self._thread.deleteLater)
@@ -489,86 +425,49 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
     # ─────────────────────────────────────────────────────────────
 
     def _on_finished(self, output):
-        """
-        Called in the main thread after the worker finishes.
-        Adds result layer to QGIS canvas and shows a summary.
-        """
-        self._set_running(False)
-        self._last_results = output
+        self._last_output = output
+        self.btnRun.setEnabled(True)
+        self.btnExport.setEnabled(True)
 
-        results   = output["results"]
-        method    = output["method"]
-        gt        = output["geo_transform"]
-        proj      = output["projection"]
-        geotiff   = output["geotiff_path"]
-
-        # ── Add to QGIS canvas ─────────────────────────────────────────────
-        if geotiff and os.path.isfile(geotiff):
-            try:
-                layer_name = f"Change Map — {method}"
-
-                if method == "Change Vector Analysis (CVA)":
-                    self._load_cva_layer(geotiff, results, gt, proj, layer_name)
-                else:
-                    self._load_binary_layer(geotiff, layer_name)
-
-                self.iface.mapCanvas().refresh()
-
-            except Exception as exc:
-                QgsMessageLog.logMessage(
-                    f"Layer rendering error: {exc}", LOG_TAG, Qgis.Warning
-                )
-
-        # ── Summary message box ────────────────────────────────────────────
+        results    = output["results"]
+        method     = output["method"]
+        geotiff    = output["geotiff_path"]
         change_pct = results.get("change_pct", 0.0)
-        threshold  = results.get("threshold", "N/A")
 
-        summary = (
-            f"<b>Method:</b> {method}<br>"
-            f"<b>Change detected:</b> {change_pct:.2f}%<br>"
-            f"<b>Threshold used:</b> {threshold}<br>"
-        )
+        self._log(f"Analysis complete — {change_pct:.2f}% change detected.")
 
-        # Add NDVI-specific info
-        if "gain_pct" in results:
-            summary += (
-                f"<b>Vegetation gained:</b> {results['gain_pct']:.2f}%<br>"
-                f"<b>Vegetation lost:</b>   {results['loss_pct']:.2f}%<br>"
-            )
-
-        # Add CVA type breakdown
-        if "type_stats" in results:
-            summary += "<br><b>Change types:</b><br>"
-            for label, stats in results["type_stats"].items():
-                summary += f"&nbsp;&nbsp;{label}: {stats['pct']:.2f}%<br>"
-
-        if output["csv_path"]:
-            summary += f"<br><b>CSV saved:</b> {output['csv_path']}"
-        if output["geotiff_path"]:
-            summary += f"<br><b>GeoTIFF saved:</b> {output['geotiff_path']}"
-
-        QMessageBox.information(self, "Analysis Complete", summary)
-        self._set_status("Analysis complete.")
+        self.analysis_complete.emit(geotiff or "")
 
     def _on_error(self, error_msg):
-        """Called when the worker emits an error signal."""
-        self._set_running(False)
-        self._set_status("Error — see message below.")
+        self.btnRun.setEnabled(True)
+        self._log(f"ERROR: {error_msg}")
         self._show_error(
-            f"An error occurred during processing:\n\n{error_msg}\n\n"
-            "Check the QGIS message log (View → Panels → Log Messages) "
-            "for the full traceback."
+            f"Processing failed:\n\n{error_msg}\n\n"
+            "Check the QGIS log (View > Panels > Log Messages) for the traceback."
         )
+
+    # ─────────────────────────────────────────────────────────────
+    # EXPORT RESULTS
+    # ─────────────────────────────────────────────────────────────
+
+    def _export_results(self):
+        if self._last_output is None:
+            return
+        geotiff = self._last_output.get("geotiff_path", "")
+        csv     = self._last_output.get("csv_path", "")
+        msg = "Exported:\n"
+        if geotiff:
+            msg += f"  GeoTIFF: {geotiff}\n"
+        if csv:
+            msg += f"  CSV:     {csv}\n"
+        QMessageBox.information(self, "Export Complete", msg)
 
     # ─────────────────────────────────────────────────────────────
     # QGIS LAYER LOADING
     # ─────────────────────────────────────────────────────────────
 
-    def _load_binary_layer(self, geotiff_path, layer_name):
-        """
-        Load a binary (0/1) change mask GeoTIFF into QGIS with a
-        red (changed) / grey (unchanged) colour ramp.
-        """
+    def _load_binary_layer(self, geotiff_path: str, layer_name: str):
+        """Load a binary change mask with grey=0 / red=1 colour ramp."""
         layer = QgsRasterLayer(geotiff_path, layer_name)
         if not layer.isValid():
             QgsMessageLog.logMessage(
@@ -576,13 +475,12 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
             )
             return
 
-        # Colour ramp: 0 = light grey, 1 = red
+        from PyQt5.QtGui import QColor
         shader = QgsColorRampShader()
         shader.setColorRampType(QgsColorRampShader.Exact)
-        from PyQt5.QtGui import QColor
         shader.setColorRampItemList([
-            QgsColorRampShader.ColorRampItem(0, QColor("#cccccc"), "No Change"),
-            QgsColorRampShader.ColorRampItem(1, QColor("#e63946"), "Changed"),
+            QgsColorRampShader.ColorRampItem(0, QColor("#aaaaaa"), "No Change"),
+            QgsColorRampShader.ColorRampItem(1, QColor("#e63946"), "Change"),
         ])
 
         renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1)
@@ -597,77 +495,22 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
             f"Layer '{layer_name}' added to canvas.", LOG_TAG, Qgis.Info
         )
 
-    def _load_cva_layer(self, geotiff_path, results, gt, proj, layer_name):
-        """
-        Save the CVA change_type map (0–4) as a separate GeoTIFF and load
-        it into QGIS with the 5-class colour scheme.
-        """
-        # Save the change_type uint8 map
-        cva_type_path = geotiff_path.replace(".tif", "_types.tif")
-        save_raster(
-            cva_type_path,
-            results["change_type"].astype(np.float32),
-            gt, proj
-        )
-
-        layer = QgsRasterLayer(cva_type_path, layer_name)
-        if not layer.isValid():
-            return
-
-        from PyQt5.QtGui import QColor
-        CVA_STYLE = {
-            0: ("#888888", "No Change"),
-            1: ("#e63946", "Vegetation Loss"),
-            2: ("#2dc653", "Vegetation Gain"),
-            3: ("#f4a261", "Urban/Soil Gain"),
-            4: ("#457b9d", "Water/Shadow"),
-        }
-        shader = QgsColorRampShader()
-        shader.setColorRampType(QgsColorRampShader.Exact)
-        shader.setColorRampItemList([
-            QgsColorRampShader.ColorRampItem(v, QColor(hex_c), label)
-            for v, (hex_c, label) in CVA_STYLE.items()
-        ])
-
-        renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1)
-        renderer.setClassificationMin(0)
-        renderer.setClassificationMax(4)
-        renderer.setShader(shader)
-        layer.setRenderer(renderer)
-        layer.triggerRepaint()
-
-        QgsProject.instance().addMapLayer(layer)
-
     # ─────────────────────────────────────────────────────────────
-    # UI HELPER METHODS
+    # HELPERS
     # ─────────────────────────────────────────────────────────────
 
-    def _set_running(self, is_running):
-        """Lock/unlock controls during processing."""
-        self.btnRun.setEnabled(not is_running)
-        self.groupInput.setEnabled(not is_running)
-        self.groupAlgorithm.setEnabled(not is_running)
-        self.groupOutput.setEnabled(not is_running)
-        if is_running:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-        else:
-            QApplication.restoreOverrideCursor()
+    def _log(self, message: str):
+        self.textLog.append(message)
 
-    def _set_status(self, message):
-        self.labelStatus.setText(message)
-        QApplication.processEvents()   # force UI refresh
-
-    def _show_error(self, message):
+    def _show_error(self, message: str):
         QMessageBox.critical(self, "LandChangeDetector — Error", message)
 
     # ─────────────────────────────────────────────────────────────
-    # CLEANUP ON CLOSE
+    # CLEANUP
     # ─────────────────────────────────────────────────────────────
 
     def closeEvent(self, event):
-        """Stop any running worker thread before closing."""
         if self._thread and self._thread.isRunning():
             self._thread.quit()
-            self._thread.wait(3000)   # wait max 3 seconds
-        QApplication.restoreOverrideCursor()
+            self._thread.wait(3000)
         super().closeEvent(event)
