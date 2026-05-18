@@ -159,50 +159,87 @@ def _apply_class_remap(labels, remap):
 # 3A. SUPERVISED TRAINING — WorldCover + Dual-Date Pooling
 # =============================================================================
 
-def _reproject_worldcover_to_sentinel2(wc_paths, reference_band_path,
-                                        wc_crop,
-                                        tmp_path='/tmp/wc_aligned.tif'):
-    """Reproject WorldCover (EPSG:4326) to Sentinel-2 UTM grid."""
-    from osgeo import gdal
-    if isinstance(wc_paths, str):
-        wc_paths = [wc_paths]
+def _reproject_worldcover_to_sentinel2(wc_paths, reference_band_path, wc_crop):
+    """
+    Reproject and crop WorldCover tile(s) to the Sentinel-2 UTM grid.
 
-    ref  = gdal.Open(reference_band_path, gdal.GA_ReadOnly)
+    Uses tempfile.TemporaryDirectory (cross-platform) and gdal.Warp()
+    directly with a list of files so no intermediate VRT is needed.
+    """
+    import tempfile
+    from pathlib import Path
+    from osgeo import gdal
+
+    if isinstance(wc_paths, (str, Path)):
+        wc_paths = [str(wc_paths)]
+    else:
+        wc_paths = [str(p) for p in wc_paths]
+
+    # Get projection and geotransform from the reference Sentinel-2 band
+    ref = gdal.Open(reference_band_path, gdal.GA_ReadOnly)
+    if ref is None:
+        raise RuntimeError(f"Cannot open reference band: {reference_band_path}")
     proj = ref.GetProjection()
     gt   = ref.GetGeoTransform()
     ref  = None
 
-    xo, yo   = wc_crop['x_off'],  wc_crop['y_off']
-    xs, ys   = wc_crop['x_size'], wc_crop['y_size']
-    px       = gt[1]
-    x_min    = gt[0] + xo * px
-    y_max    = gt[3] - yo * px
-    x_max, y_min = x_min + xs * px, y_max - ys * px
+    # Compute output bounds from crop window (UTM metres)
+    xo, yo = wc_crop['x_off'],  wc_crop['y_off']
+    xs, ys = wc_crop['x_size'], wc_crop['y_size']
+    px     = gt[1]          # positive pixel width  (e.g. 10.0 m)
+    py     = gt[5]          # negative pixel height (e.g. -10.0 m)
+    x_min  = gt[0] + xo * px
+    y_max  = gt[3] + yo * py   # py is negative, moves south
+    x_max  = x_min + xs * px
+    y_min  = y_max + ys * py   # further south
 
-    if len(wc_paths) > 1:
-        print(f"  Mosaicking {len(wc_paths)} WorldCover tiles...")
-        vrt = tmp_path.replace('.tif', '.vrt')
-        gdal.BuildVRT(vrt, wc_paths)
-        src = tmp_path.replace('.tif', '_mosaic.tif')
-        gdal.Translate(src, vrt, format='GTiff')
-    else:
-        src = wc_paths[0]
+    print(
+        f"  WorldCover: {len(wc_paths)} tile(s) | "
+        f"bounds ({x_min:.0f}, {y_min:.0f}, {x_max:.0f}, {y_max:.0f})"
+    )
 
-    print("  Reprojecting WorldCover → UTM...")
-    gdal.Warp(tmp_path, src, format='GTiff', dstSRS=proj,
-              xRes=px, yRes=px,
-              resampleAlg=gdal.GRA_NearestNeighbour,
-              outputBounds=(x_min, y_min, x_max, y_max),
-              creationOptions=['COMPRESS=LZW'])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_path = str(Path(tmpdir) / "wc_aligned.tif")
 
-    ds   = gdal.Open(tmp_path, gdal.GA_ReadOnly)
-    data = ds.GetRasterBand(1).ReadAsArray().astype(np.uint8)
-    ds   = None
+        # gdal.Warp accepts a list of inputs and handles mosaicking natively
+        # — no intermediate VRT or Translate step required.
+        ds = gdal.Warp(
+            out_path,
+            wc_paths,
+            format="GTiff",
+            dstSRS=proj,
+            outputBounds=(x_min, y_min, x_max, y_max),
+            xRes=abs(px),
+            yRes=abs(py),
+            resampleAlg=gdal.GRA_NearestNeighbour,
+            outputType=gdal.GDT_Byte,
+            creationOptions=["COMPRESS=LZW"],
+        )
 
+        if ds is None:
+            raise RuntimeError(
+                f"gdal.Warp() failed for WorldCover.\n"
+                f"  Inputs : {wc_paths}\n"
+                f"  Bounds : ({x_min:.0f}, {y_min:.0f}, {x_max:.0f}, {y_max:.0f})"
+            )
+        ds.FlushCache()
+        ds = None
+
+        aligned = gdal.Open(out_path, gdal.GA_ReadOnly)
+        if aligned is None:
+            raise RuntimeError(
+                f"Cannot open aligned WorldCover raster: {out_path}"
+            )
+        data = aligned.GetRasterBand(1).ReadAsArray().astype(np.uint8)
+        aligned = None
+    # TemporaryDirectory and its file are deleted here
+
+    # Resize to exact crop shape if GDAL returned slightly different dimensions
     if data.shape != (ys, xs):
         from scipy.ndimage import zoom
         data = zoom(data, (ys / data.shape[0], xs / data.shape[1]),
                     order=0).astype(np.uint8)
+        print(f"  Resized to ({ys}, {xs})")
 
     print(f"  Aligned: {data.shape}, values: {np.unique(data).tolist()}")
     return data
