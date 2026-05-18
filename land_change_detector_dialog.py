@@ -416,13 +416,20 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
 
         self._worker.finished.connect(self._thread.quit)
         self._worker.error.connect(self._thread.quit)
+        self._thread.finished.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._cleanup_thread)
 
         self._thread.start()
 
     # ─────────────────────────────────────────────────────────────
     # RESULT HANDLERS
     # ─────────────────────────────────────────────────────────────
+
+    def _cleanup_thread(self):
+        """Null out thread/worker references after Qt schedules deleteLater."""
+        self._thread = None
+        self._worker = None
 
     def _on_finished(self, output):
         self._last_output = output
@@ -510,7 +517,12 @@ class LandChangeDetectorDialog(QDialog, FORM_CLASS):
     # ─────────────────────────────────────────────────────────────
 
     def closeEvent(self, event):
-        if self._thread and self._thread.isRunning():
-            self._thread.quit()
-            self._thread.wait(3000)
+        try:
+            if self._thread is not None and self._thread.isRunning():
+                self._thread.quit()
+                self._thread.wait(3000)
+        except RuntimeError:
+            pass
+        self._thread = None
+        self._worker = None
         super().closeEvent(event)
