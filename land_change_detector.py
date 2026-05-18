@@ -75,7 +75,7 @@ class LandChangeDetector:
         """
 
         # ── Main action: open the change detection dialog ─────────────────
-        icon_path = os.path.join(PLUGIN_DIR, "resources", "icon.png")
+        icon_path = os.path.join(PLUGIN_DIR, "icon.png")
         icon      = QIcon(icon_path) if os.path.isfile(icon_path) else QIcon()
 
         self.action_open = QAction(
@@ -104,10 +104,10 @@ class LandChangeDetector:
         self.action_about.setObjectName("aboutLandChangeDetector")
         self.action_about.triggered.connect(self.show_about)
 
-        # ── Register actions in menu and toolbar ──────────────────────────
-        self.iface.addPluginToRasterMenu(self.menu, self.action_open)
-        self.iface.addPluginToRasterMenu(self.menu, self.action_about)
-        self.iface.addRasterToolBarIcon(self.action_open)
+        # ── Register actions in Plugins menu and main toolbar ─────────────
+        self.iface.addPluginToMenu(self.menu, self.action_open)
+        self.iface.addPluginToMenu(self.menu, self.action_about)
+        self.iface.addToolBarIcon(self.action_open)
 
         # Keep references for cleanup
         self.actions.extend([self.action_open, self.action_about])
@@ -126,8 +126,8 @@ class LandChangeDetector:
         Called by QGIS when the plugin is disabled or uninstalled.
         """
         for action in self.actions:
-            self.iface.removePluginRasterMenu(self.menu, action)
-            self.iface.removeRasterToolBarIcon(action)
+            self.iface.removePluginMenu(self.menu, action)
+            self.iface.removeToolBarIcon(action)
         self.actions.clear()
 
         # Close dialog if open
@@ -150,7 +150,7 @@ class LandChangeDetector:
         between opens in the same QGIS session.
         """
         # Import here (not at top) so QGIS loads the plugin faster
-        from land_change_detector_dialog import LandChangeDetectorDialog
+        from .land_change_detector_dialog import LandChangeDetectorDialog
 
         if self.dialog is None:
             self.dialog = LandChangeDetectorDialog(

@@ -36,15 +36,15 @@ FORM_CLASS, _ = loadUiType(
 )
 
 # ── Algorithm imports ───────────────────────────────────────────────────────
-from algorithms.band_differencing import run_band_differencing
-from algorithms.ndvi_differencing  import run_ndvi_differencing
-from algorithms.cva                import run_cva
-from algorithms.rf_improvements    import (run_binary_rf,
-                                           apply_majority_filter_and_compare)
+from .algorithms.band_differencing import run_band_differencing
+from .algorithms.ndvi_differencing  import run_ndvi_differencing
+from .algorithms.cva                import run_cva
+from .algorithms.rf_improvements    import (run_binary_rf,
+                                            apply_majority_filter_and_compare)
 
 # ── Utility imports ─────────────────────────────────────────────────────────
-from utils.raster_utils import load_band_crop, load_cloud_mask, save_raster
-from utils.stats_utils  import compute_change_statistics, export_statistics_csv
+from .utils.raster_utils import load_band_crop, load_cloud_mask, save_raster
+from .utils.stats_utils  import compute_change_statistics, export_statistics_csv
 
 LOG_TAG = "LandChangeDetector"
 
