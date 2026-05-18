@@ -227,8 +227,8 @@ class AnalysisWorker(QObject):
                 self.log.emit(
                     f"[{_ts()}] WorldCover: {len(wc_paths)} tile(s) found"
                 )
-                for p in wc_paths:
-                    self.log.emit(f"[{_ts()}]   {p}")
+                for wc_path in wc_paths:
+                    self.log.emit(f"[{_ts()}]   {wc_path}")
 
                 # ── Run Binary RF (supervised, WorldCover labels) ─────────
                 bands_before = [blu_b, grn_b, red_b, nir_b]
