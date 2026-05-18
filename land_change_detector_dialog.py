@@ -200,20 +200,46 @@ class AnalysisWorker(QObject):
                     wc_crop=CROP,
                     reference_band_path=b04_before,
                 )
+
+                # ── Diagnostic: run_binary_rf output ──────────────────────
+                self.log.emit(f"[{_ts()}] Binary RF keys: {list(rf_results.keys())}")
+                self.log.emit(f"[{_ts()}] Binary RF training_mode: {rf_results.get('training_mode')}")
+                self.log.emit(f"[{_ts()}] Binary RF raw change_pct: {rf_results.get('change_pct')}")
+                self.log.emit(f"[{_ts()}] Binary RF veg_loss_pct: {rf_results.get('veg_loss_pct')}")
+                self.log.emit(f"[{_ts()}] Binary RF veg_gain_pct: {rf_results.get('veg_gain_pct')}")
+                self.log.emit(f"[{_ts()}] Binary RF accuracy: {rf_results.get('accuracy')}")
+                self.log.emit(f"[{_ts()}] Binary RF spatial_cv_mean: {rf_results.get('spatial_cv_mean')}")
+                self.log.emit(f"[{_ts()}] Binary RF spatial_cv_std: {rf_results.get('spatial_cv_std')}")
+
+                # ── Extract class maps and valid mask ─────────────────────
+                rf_valid     = rf_results.get("valid_mask", valid_both)
+                class_before = _get_result_array(rf_results,
+                                                 "class_before",
+                                                 "binary_map_before")
+                class_after  = _get_result_array(rf_results,
+                                                 "class_after",
+                                                 "binary_map_after")
+
                 self.log.emit(
-                    f"[{_ts()}] Binary RF keys: {list(rf_results.keys())}"
+                    f"[{_ts()}] class_before unique valid values: "
+                    f"{np.unique(class_before[rf_valid])}"
                 )
+                self.log.emit(
+                    f"[{_ts()}] class_after unique valid values: "
+                    f"{np.unique(class_after[rf_valid])}"
+                )
+
                 smoothed = apply_majority_filter_and_compare(
-                    _get_result_array(rf_results,
-                                      "class_before", "binary_map_before"),
-                    _get_result_array(rf_results,
-                                      "class_after",  "binary_map_after"),
-                    rf_results.get("valid_mask", valid_both),
-                    window=5,
+                    class_before, class_after, rf_valid, window=5,
                 )
-                self.log.emit(
-                    f"[{_ts()}] Smoothed keys: {list(smoothed.keys())}"
-                )
+
+                # ── Diagnostic: apply_majority_filter_and_compare output ──
+                self.log.emit(f"[{_ts()}] Smoothed original change_pct: {smoothed.get('change_pct_original')}")
+                self.log.emit(f"[{_ts()}] Smoothed final change_pct: {smoothed.get('change_pct')}")
+                self.log.emit(f"[{_ts()}] Smoothed reduction_pp: {smoothed.get('reduction_pp')}")
+                self.log.emit(f"[{_ts()}] Smoothed changed_pixels: {smoothed.get('changed_pixels')}")
+                self.log.emit(f"[{_ts()}] Smoothed total_pixels: {smoothed.get('total_pixels')}")
+
                 results = {
                     **rf_results,
                     **smoothed,
