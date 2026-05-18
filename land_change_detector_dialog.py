@@ -191,27 +191,65 @@ class AnalysisWorker(QObject):
                 )
 
             elif method == "Binary RF + Smoothing":
+                # ── Resolve WorldCover paths ──────────────────────────────
+                try:
+                    from .utils.image_pair_config import DATA_ROOT
+                except ImportError:
+                    from utils.image_pair_config import DATA_ROOT
+
+                wc_dir = DATA_ROOT / "worldcover"
+                wc_candidates = [
+                    "ESA_WorldCover_10m_2021_v200_N33E006_Map.tif",
+                    "ESA_WorldCover_10m_2021_v200_N33E003_Map.tif",
+                ]
+                wc_paths = [
+                    str(wc_dir / name)
+                    for name in wc_candidates
+                    if (wc_dir / name).exists()
+                ]
+                if not wc_paths:
+                    # Also try a glob in case the tile names differ
+                    if wc_dir.exists():
+                        wc_paths = [
+                            str(p) for p in wc_dir.glob("ESA_WorldCover*.tif")
+                        ]
+
+                if not wc_paths:
+                    raise FileNotFoundError(
+                        f"WorldCover reference data not found in {wc_dir}.\n"
+                        "Supervised Binary RF cannot run without WorldCover labels.\n"
+                        "Please ensure ESA_WorldCover_10m_2021_v200_N33E*.tif "
+                        "files are present in the data/worldcover/ directory, "
+                        "or set the LAND_CHANGE_DATA environment variable to "
+                        "your data root."
+                    )
+
+                self.log.emit(
+                    f"[{_ts()}] WorldCover: {len(wc_paths)} tile(s) found"
+                )
+                for p in wc_paths:
+                    self.log.emit(f"[{_ts()}]   {p}")
+
+                # ── Run Binary RF (supervised, WorldCover labels) ─────────
                 bands_before = [blu_b, grn_b, red_b, nir_b]
                 bands_after  = [blu_a, grn_a, red_a, nir_a]
                 rf_results   = run_binary_rf(
                     bands_before=bands_before,
                     bands_after =bands_after,
-                    worldcover_path=None,
+                    worldcover_path=wc_paths,
                     wc_crop=CROP,
                     reference_band_path=b04_before,
                 )
 
                 # ── Diagnostic: run_binary_rf output ──────────────────────
-                self.log.emit(f"[{_ts()}] Binary RF keys: {list(rf_results.keys())}")
                 self.log.emit(f"[{_ts()}] Binary RF training_mode: {rf_results.get('training_mode')}")
                 self.log.emit(f"[{_ts()}] Binary RF raw change_pct: {rf_results.get('change_pct')}")
                 self.log.emit(f"[{_ts()}] Binary RF veg_loss_pct: {rf_results.get('veg_loss_pct')}")
                 self.log.emit(f"[{_ts()}] Binary RF veg_gain_pct: {rf_results.get('veg_gain_pct')}")
                 self.log.emit(f"[{_ts()}] Binary RF accuracy: {rf_results.get('accuracy')}")
                 self.log.emit(f"[{_ts()}] Binary RF spatial_cv_mean: {rf_results.get('spatial_cv_mean')}")
-                self.log.emit(f"[{_ts()}] Binary RF spatial_cv_std: {rf_results.get('spatial_cv_std')}")
 
-                # ── Extract class maps and valid mask ─────────────────────
+                # ── Smooth and compare ────────────────────────────────────
                 rf_valid     = rf_results.get("valid_mask", valid_both)
                 class_before = _get_result_array(rf_results,
                                                  "class_before",
@@ -220,25 +258,16 @@ class AnalysisWorker(QObject):
                                                  "class_after",
                                                  "binary_map_after")
 
-                self.log.emit(
-                    f"[{_ts()}] class_before unique valid values: "
-                    f"{np.unique(class_before[rf_valid])}"
-                )
-                self.log.emit(
-                    f"[{_ts()}] class_after unique valid values: "
-                    f"{np.unique(class_after[rf_valid])}"
-                )
-
                 smoothed = apply_majority_filter_and_compare(
                     class_before, class_after, rf_valid, window=5,
                 )
 
-                # ── Diagnostic: apply_majority_filter_and_compare output ──
-                self.log.emit(f"[{_ts()}] Smoothed original change_pct: {smoothed.get('change_pct_original')}")
-                self.log.emit(f"[{_ts()}] Smoothed final change_pct: {smoothed.get('change_pct')}")
-                self.log.emit(f"[{_ts()}] Smoothed reduction_pp: {smoothed.get('reduction_pp')}")
-                self.log.emit(f"[{_ts()}] Smoothed changed_pixels: {smoothed.get('changed_pixels')}")
-                self.log.emit(f"[{_ts()}] Smoothed total_pixels: {smoothed.get('total_pixels')}")
+                self.log.emit(
+                    f"[{_ts()}] Smoothed: "
+                    f"raw={smoothed.get('change_pct_original'):.2f}% "
+                    f"-> smoothed={smoothed.get('change_pct'):.2f}% "
+                    f"(reduction {smoothed.get('reduction_pp'):.2f} pp)"
+                )
 
                 results = {
                     **rf_results,
