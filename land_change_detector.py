@@ -27,6 +27,7 @@ from qgis.core import (
     QgsMessageLog,
     QgsProject,
     QgsRasterLayer,
+    QgsRasterShader,
     QgsSingleBandPseudoColorRenderer,
     Qgis,
 )
@@ -183,17 +184,19 @@ class LandChangeDetector:
             )
             return
 
-        shader = QgsColorRampShader()
-        shader.setColorRampType(QgsColorRampShader.Exact)
-        shader.setColorRampItemList([
+        color_ramp = QgsColorRampShader()
+        color_ramp.setColorRampType(QgsColorRampShader.Exact)
+        color_ramp.setColorRampItemList([
             QgsColorRampShader.ColorRampItem(0, QColor("#aaaaaa"), "No Change"),
             QgsColorRampShader.ColorRampItem(1, QColor("#e63946"), "Change"),
         ])
 
-        renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1)
-        renderer.setClassificationMin(0)
-        renderer.setClassificationMax(1)
-        renderer.setShader(shader)
+        raster_shader = QgsRasterShader()
+        raster_shader.setRasterShaderFunction(color_ramp)
+
+        renderer = QgsSingleBandPseudoColorRenderer(
+            layer.dataProvider(), 1, raster_shader
+        )
         layer.setRenderer(renderer)
 
         QgsProject.instance().addMapLayer(layer)
