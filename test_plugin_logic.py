@@ -170,6 +170,34 @@ def test5_nan_handling():
 
 
 # =============================================================================
+# TEST 6 — apply_majority_filter_and_compare returns plugin-required schema
+# =============================================================================
+def test6_smoothed_result_schema():
+    from algorithms.rf_improvements import apply_majority_filter_and_compare
+
+    rng = np.random.default_rng(13)
+    # Simulate binary class maps: 1=Vegetated, 2=Non-Vegetated
+    map_b = rng.choice([1, 2], size=(100, 100)).astype(np.uint8)
+    map_a = rng.choice([1, 2], size=(100, 100)).astype(np.uint8)
+    valid = np.ones((100, 100), dtype=bool)
+
+    smoothed = apply_majority_filter_and_compare(map_b, map_a, valid, window=3)
+
+    required = {"change_mask", "change_pct", "changed_pixels", "total_pixels"}
+    missing  = required - smoothed.keys()
+    assert not missing, f"Missing keys in smoothed result: {missing}"
+
+    assert smoothed["change_mask"].dtype == bool, \
+        f"change_mask must be bool, got {smoothed['change_mask'].dtype}"
+    assert 0 <= smoothed["change_pct"] <= 100, \
+        f"change_pct out of range: {smoothed['change_pct']}"
+    assert isinstance(smoothed["changed_pixels"], (int, np.integer)), \
+        f"changed_pixels must be int, got {type(smoothed['changed_pixels'])}"
+    assert smoothed["total_pixels"] == 100 * 100, \
+        f"total_pixels should be 10000, got {smoothed['total_pixels']}"
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 if __name__ == "__main__":
@@ -182,9 +210,10 @@ if __name__ == "__main__":
     _run("Test 3: run_band_differencing on synthetic data", test3_band_differencing)
     _run("Test 4: save_raster produces valid GeoTIFF", test4_save_raster)
     _run("Test 5: NaN handling — cloud masked pixels", test5_nan_handling)
+    _run("Test 6: apply_majority_filter_and_compare result schema", test6_smoothed_result_schema)
 
     print("=" * 60)
-    print(f"Results: {PASS}/5 tests passed")
+    print(f"Results: {PASS}/6 tests passed")
     if FAIL > 0:
         print(f"  {FAIL} test(s) FAILED — fix before proceeding.")
         sys.exit(1)

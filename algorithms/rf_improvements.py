@@ -471,6 +471,12 @@ def apply_majority_filter_and_compare(map_before, map_after, valid_mask,
     print(f"  Reduction        : −{reduction:.2f} pp  ({orig_chg-smooth_chg:,} px removed)")
 
     result = {
+        # ── Stable plugin schema (required by dialog + stats_utils) ──────
+        'change_mask'         : change_smooth.astype(bool),
+        'change_pct'          : smooth_pct,
+        'changed_pixels'      : smooth_chg,
+        'total_pixels'        : n_valid,
+        # ── Smoothing-specific keys (notebook / analysis use) ────────────
         'map_before_smooth'   : smooth_b,
         'map_after_smooth'    : smooth_a,
         'change_map_smooth'   : change_smooth,

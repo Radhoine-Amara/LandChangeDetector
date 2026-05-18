@@ -50,6 +50,17 @@ from .utils.stats_utils  import compute_change_statistics, export_statistics_csv
 LOG_TAG = "LandChangeDetector"
 
 
+def _get_result_array(results: dict, *keys):
+    """Return the first key found in *results*, raising a clear KeyError if none exist."""
+    for key in keys:
+        if key in results and results[key] is not None:
+            return results[key]
+    raise KeyError(
+        f"Missing required result array. Tried: {keys}. "
+        f"Available: {list(results.keys())}"
+    )
+
+
 def _ts():
     """Return current timestamp string for log messages."""
     return datetime.datetime.now().strftime("%H:%M:%S")
@@ -189,15 +200,30 @@ class AnalysisWorker(QObject):
                     wc_crop=CROP,
                     reference_band_path=b04_before,
                 )
+                self.log.emit(
+                    f"[{_ts()}] Binary RF keys: {list(rf_results.keys())}"
+                )
                 smoothed = apply_majority_filter_and_compare(
-                    rf_results["class_before"],
-                    rf_results["class_after"],
+                    _get_result_array(rf_results,
+                                      "class_before", "binary_map_before"),
+                    _get_result_array(rf_results,
+                                      "class_after",  "binary_map_after"),
                     rf_results.get("valid_mask", valid_both),
                     window=5,
                 )
-                results = {**rf_results, **smoothed,
-                           "change_mask": smoothed["change_mask"],
-                           "change_pct":  smoothed["change_pct"]}
+                self.log.emit(
+                    f"[{_ts()}] Smoothed keys: {list(smoothed.keys())}"
+                )
+                results = {
+                    **rf_results,
+                    **smoothed,
+                    "change_mask": _get_result_array(smoothed,
+                                                     "change_mask",
+                                                     "change_map_smooth"),
+                    "change_pct":  _get_result_array(smoothed,
+                                                     "change_pct",
+                                                     "change_pct_smooth"),
+                }
             else:
                 raise ValueError(f"Unknown method: {method!r}")
 
