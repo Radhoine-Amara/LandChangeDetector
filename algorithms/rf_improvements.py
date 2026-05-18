@@ -349,6 +349,8 @@ def run_binary_rf(bands_before, bands_after,
     return {
         'binary_map_before'  : map_b,
         'binary_map_after'   : map_a,
+        'class_before'       : map_b,   # alias expected by plugin dialog
+        'class_after'        : map_a,   # alias expected by plugin dialog
         'change_map'         : change_map,
         'change_mask'        : change_map.astype(bool),
         'veg_loss_mask'      : veg_loss,
