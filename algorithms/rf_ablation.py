@@ -72,15 +72,26 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 
-from algorithms.random_forest import (
-    build_feature_stack,
-    generate_supervised_training_worldcover,
-    generate_training_samples,
-    SpatialBlockSplit,
-    _spatial_cv_score,
-    classify_image,
-    FEATURE_NAMES_V2,
-)
+try:
+    from .random_forest import (
+        build_feature_stack,
+        generate_supervised_training_worldcover,
+        generate_training_samples,
+        SpatialBlockSplit,
+        _spatial_cv_score,
+        classify_image,
+        FEATURE_NAMES_V2,
+    )
+except ImportError:
+    from algorithms.random_forest import (
+        build_feature_stack,
+        generate_supervised_training_worldcover,
+        generate_training_samples,
+        SpatialBlockSplit,
+        _spatial_cv_score,
+        classify_image,
+        FEATURE_NAMES_V2,
+    )
 
 
 # ── Feature index map ─────────────────────────────────────────────────────
@@ -261,7 +272,10 @@ def run_ablation_study(bands_before, bands_after, valid_both,
 
     # ── Step 1: Build full 10-feature stacks ─────────────────────────────────
     print("\nStep 1: Building 10-feature stacks...")
-    from algorithms.random_forest import build_feature_stack
+    try:
+        from .random_forest import build_feature_stack
+    except ImportError:
+        from algorithms.random_forest import build_feature_stack
     feat_b_full, _, _ = build_feature_stack(bands_before)
     feat_a_full, _, _ = build_feature_stack(bands_after)
 

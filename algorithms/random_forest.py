@@ -241,7 +241,10 @@ def generate_supervised_training_worldcover(
             wc_crop=wc_crop,
         )
     else:
-        from utils.raster_utils import load_band_crop
+        try:
+            from ..utils.raster_utils import load_band_crop
+        except ImportError:
+            from utils.raster_utils import load_band_crop
         paths = ([worldcover_path] if isinstance(worldcover_path, str)
                  else worldcover_path)
         wc_data, _, _ = load_band_crop(paths[0], **wc_crop)

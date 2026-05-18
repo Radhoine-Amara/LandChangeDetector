@@ -139,7 +139,10 @@ def run_binary_rf(bands_before, bands_after,
         'veg_loss_pct'       float
         'veg_gain_pct'       float
     """
-    from algorithms.random_forest import SpatialBlockSplit, _spatial_cv_score
+    try:
+        from .random_forest import SpatialBlockSplit, _spatial_cv_score
+    except ImportError:
+        from algorithms.random_forest import SpatialBlockSplit, _spatial_cv_score
 
     rows, cols  = bands_before[0].shape
     image_shape = (rows, cols)
@@ -154,7 +157,10 @@ def run_binary_rf(bands_before, bands_after,
         feat_b, fnames, val_b = build_feature_stack_with_texture(bands_before)
         feat_a, _,     val_a  = build_feature_stack_with_texture(bands_after)
     else:
-        from algorithms.random_forest import build_feature_stack
+        try:
+            from .random_forest import build_feature_stack
+        except ImportError:
+            from algorithms.random_forest import build_feature_stack
         feat_b, fnames, val_b = build_feature_stack(bands_before)
         feat_a, _,     val_a  = build_feature_stack(bands_after)
 
@@ -163,7 +169,10 @@ def run_binary_rf(bands_before, bands_after,
 
     # ── Step 2: Load WorldCover and apply binary mapping ───────────────────
     if worldcover_path is not None and wc_crop is not None:
-        from algorithms.random_forest import _reproject_worldcover_to_sentinel2
+        try:
+            from .random_forest import _reproject_worldcover_to_sentinel2
+        except ImportError:
+            from algorithms.random_forest import _reproject_worldcover_to_sentinel2
         wc_paths = ([worldcover_path] if isinstance(worldcover_path, str)
                     else worldcover_path)
         if reference_band_path is not None:
@@ -173,7 +182,10 @@ def run_binary_rf(bands_before, bands_after,
                 wc_crop=wc_crop,
             )
         else:
-            from utils.raster_utils import load_band_crop
+            try:
+                from ..utils.raster_utils import load_band_crop
+            except ImportError:
+                from utils.raster_utils import load_band_crop
             wc_data, _, _ = load_band_crop(wc_paths[0], **wc_crop)
             wc_data = wc_data.astype(np.uint8)
 
@@ -222,7 +234,10 @@ def run_binary_rf(bands_before, bands_after,
     else:
         print("  WorldCover not provided — NDVI-based pseudo-labels (fallback)")
         # Use NDVI threshold to generate binary labels (no WorldCover needed)
-        from algorithms.random_forest import build_feature_stack as _bfs
+        try:
+            from .random_forest import build_feature_stack as _bfs
+        except ImportError:
+            from algorithms.random_forest import build_feature_stack as _bfs
         feat_tmp, _, _ = _bfs(bands_before)
         ndvi_flat = feat_tmp[:, 4]  # NDVI is index 4
         valid_flat = valid_both.flatten()
@@ -575,7 +590,10 @@ def build_feature_stack_with_texture(bands, texture_window=5, band_names=None):
     feature_names : list[str]  12 names
     valid_mask    : np.ndarray bool  (rows, cols)
     """
-    from algorithms.random_forest import build_feature_stack
+    try:
+        from .random_forest import build_feature_stack
+    except ImportError:
+        from algorithms.random_forest import build_feature_stack
     feat_10, _, valid_mask = build_feature_stack(bands)
 
     # Compute texture on NIR band (index 3 in raw bands)
