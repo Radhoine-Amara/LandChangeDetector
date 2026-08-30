@@ -1,0 +1,6 @@
+Method,Spatial CV F1,Change %,RF/NDVI ratio,NDVI Jaccard,Notes
+NDVI Differencing (reference),—,13.52%,1.00x,1.000,Physical anchor — most reliable
+3-class RF (baseline),0.5929,36.44%,2.70x,0.1253,Original v2 pipeline
+3-class RF + window=5 smoothing,0.5929,30.55%,2.26x,0.1159,+ salt-and-pepper removal
+Binary RF (Veg vs Non-Veg),0.7772,16.93%,1.25x,0.0868,★ PRIMARY IMPROVEMENT
+Binary RF + window=5 smoothing,0.7772,13.87%,1.03x,0.0824,★ RECOMMENDED FINAL RESULT

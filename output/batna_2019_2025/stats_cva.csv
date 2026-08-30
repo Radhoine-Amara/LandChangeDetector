@@ -1,0 +1,17 @@
+method,metric,value,unit
+CVA,total_pixels,4000000.0,px
+CVA,changed_pixels,810102.0,px
+CVA,unchanged_pixels,3189898.0,px
+CVA,change_pct,24.4073,%
+CVA,threshold,1124.332153,
+CVA,magnitude_mean,887.5065,
+CVA,magnitude_std,580.0727,
+CVA,magnitude_max,9089.5078,
+CVA,cva_vegetation_loss_px,35783.0,px
+CVA,cva_vegetation_loss_pct,1.0781,%
+CVA,cva_vegetation_gain_px,6785.0,px
+CVA,cva_vegetation_gain_pct,0.2044,%
+CVA,cva_urban_soil_gain_px,696221.0,px
+CVA,cva_urban_soil_gain_pct,20.9762,%
+CVA,cva_water_shadow_px,71313.0,px
+CVA,cva_water_shadow_pct,2.1486,%

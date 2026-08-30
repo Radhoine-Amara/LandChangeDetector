@@ -1,67 +1,282 @@
-<ui version="4.0" >
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
  <class>LandChangeDetectorDialogBase</class>
- <widget class="QDialog" name="LandChangeDetectorDialogBase" >
-  <property name="geometry" >
+ <widget class="QDialog" name="LandChangeDetectorDialogBase">
+  <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>300</height>
+    <width>600</width>
+    <height>720</height>
    </rect>
   </property>
-  <property name="windowTitle" >
-   <string>Land Change Detector</string>
+  <property name="minimumSize">
+   <size>
+    <width>560</width>
+    <height>680</height>
+   </size>
   </property>
-  <widget class="QDialogButtonBox" name="button_box" >
-   <property name="geometry" >
-    <rect>
-     <x>30</x>
-     <y>240</y>
-     <width>341</width>
-     <height>32</height>
-    </rect>
+  <property name="windowTitle">
+   <string>LandChangeDetector - Change Detection Plugin</string>
+  </property>
+
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing">
+    <number>8</number>
    </property>
-   <property name="orientation" >
-    <enum>Qt::Horizontal</enum>
-   </property>
-   <property name="standardButtons" >
-    <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
-   </property>
-  </widget>
+   <property name="leftMargin"><number>12</number></property>
+   <property name="topMargin"><number>12</number></property>
+   <property name="rightMargin"><number>12</number></property>
+   <property name="bottomMargin"><number>12</number></property>
+
+   <item>
+    <widget class="QGroupBox" name="groupInput">
+     <property name="title">
+      <string>Input Images</string>
+     </property>
+     <layout class="QFormLayout" name="formInput">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>6</number></property>
+      <property name="leftMargin"><number>10</number></property>
+      <property name="topMargin"><number>10</number></property>
+      <property name="rightMargin"><number>10</number></property>
+      <property name="bottomMargin"><number>10</number></property>
+
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelBefore">
+        <property name="text"><string>Before Image (B04 .jp2):</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditBefore">
+          <property name="placeholderText">
+           <string>Select B04_10m.jp2 - Before date (Red band)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseBefore">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelAfter">
+        <property name="text"><string>After Image (B04 .jp2):</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditAfter">
+          <property name="placeholderText">
+           <string>Select B04_10m.jp2 - After date (Red band)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseAfter">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelSCLBefore">
+        <property name="text"><string>SCL Before (cloud mask .jp2):</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditSCLBefore">
+          <property name="placeholderText">
+           <string>Select SCL_20m.jp2 - Before date cloud mask</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseSCLBefore">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+      <item row="3" column="0">
+       <widget class="QLabel" name="labelSCLAfter">
+        <property name="text"><string>SCL After (cloud mask .jp2):</string></property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <layout class="QHBoxLayout">
+        <item>
+         <widget class="QLineEdit" name="lineEditSCLAfter">
+          <property name="placeholderText">
+           <string>Select SCL_20m.jp2 - After date cloud mask</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBrowseSCLAfter">
+          <property name="text"><string>Browse</string></property>
+          <property name="maximumWidth"><number>70</number></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <item>
+    <widget class="QGroupBox" name="groupAlgorithm">
+     <property name="title">
+      <string>Algorithm Settings</string>
+     </property>
+     <layout class="QFormLayout" name="formAlgorithm">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>8</number></property>
+      <property name="leftMargin"><number>10</number></property>
+      <property name="topMargin"><number>10</number></property>
+      <property name="rightMargin"><number>10</number></property>
+      <property name="bottomMargin"><number>10</number></property>
+
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelMethod">
+        <property name="text"><string>Detection Method:</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboMethod">
+        <item><property name="text"><string>NDVI Differencing</string></property></item>
+        <item><property name="text"><string>Band Differencing</string></property></item>
+        <item><property name="text"><string>CVA</string></property></item>
+        <item><property name="text"><string>Binary RF + Smoothing</string></property></item>
+       </widget>
+      </item>
+
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelOptions">
+        <property name="text"><string>Options:</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QCheckBox" name="checkCloudMask">
+        <property name="text"><string>Enable cloud masking</string></property>
+        <property name="checked"><bool>true</bool></property>
+        <property name="toolTip">
+         <string>Apply SCL-based cloud mask before running the algorithm</string>
+        </property>
+       </widget>
+      </item>
+
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelCropSize">
+        <property name="text"><string>Crop size (px):</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="spinCropSize">
+        <property name="minimum"><number>500</number></property>
+        <property name="maximum"><number>10980</number></property>
+        <property name="value"><number>2000</number></property>
+        <property name="singleStep"><number>500</number></property>
+        <property name="toolTip">
+         <string>Crop window size in pixels. Default 2000 px = 20 km x 20 km at 10m.</string>
+        </property>
+       </widget>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
+   <item>
+    <widget class="QPushButton" name="btnRun">
+     <property name="text"><string>Run Analysis</string></property>
+     <property name="minimumHeight"><number>36</number></property>
+     <property name="toolTip">
+      <string>Start the selected change detection algorithm</string>
+     </property>
+     <property name="default"><bool>true</bool></property>
+    </widget>
+   </item>
+
+   <item>
+    <widget class="QProgressBar" name="progressBar">
+     <property name="value"><number>0</number></property>
+     <property name="textVisible"><bool>true</bool></property>
+     <property name="format"><string>%p%</string></property>
+    </widget>
+   </item>
+
+   <item>
+    <widget class="QTextEdit" name="textLog">
+     <property name="readOnly"><bool>true</bool></property>
+     <property name="minimumHeight"><number>120</number></property>
+     <property name="placeholderText">
+      <string>Analysis log will appear here...</string>
+     </property>
+     <property name="toolTip"><string>Processing log output</string></property>
+    </widget>
+   </item>
+
+   <item>
+    <layout class="QHBoxLayout" name="layoutButtons">
+     <item>
+      <spacer>
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0">
+        <size><width>40</width><height>20</height></size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnExport">
+       <property name="text"><string>Export Results</string></property>
+       <property name="enabled"><bool>false</bool></property>
+       <property name="minimumWidth"><number>120</number></property>
+       <property name="toolTip">
+        <string>Export GeoTIFF and statistics CSV (available after analysis)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnClose">
+       <property name="text"><string>Close</string></property>
+       <property name="minimumWidth"><number>80</number></property>
+       <property name="toolTip"><string>Close this dialog</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+
+  </layout>
  </widget>
+
  <resources/>
+
  <connections>
   <connection>
-   <sender>button_box</sender>
-   <signal>accepted()</signal>
-   <receiver>LandChangeDetectorDialogBase</receiver>
-   <slot>accept()</slot>
-   <hints>
-    <hint type="source_label" >
-     <x>248</x>
-     <y>254</y>
-    </hint>
-    <hint type="destination_label" >
-     <x>157</x>
-     <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>button_box</sender>
-   <signal>rejected()</signal>
+   <sender>btnClose</sender>
+   <signal>clicked()</signal>
    <receiver>LandChangeDetectorDialogBase</receiver>
    <slot>reject()</slot>
    <hints>
-    <hint type="source_label" >
-     <x>316</x>
-     <y>260</y>
-    </hint>
-    <hint type="destination_label" >
-     <x>286</x>
-     <y>274</y>
-    </hint>
+    <hint type="sourcelabel"><x>540</x><y>700</y></hint>
+    <hint type="destinationlabel"><x>300</x><y>360</y></hint>
    </hints>
   </connection>
  </connections>
+
 </ui>

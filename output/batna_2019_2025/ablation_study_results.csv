@@ -1,0 +1,10 @@
+Experiment,N Features,Spatial CV F1,CV Std,Delta F1,Holdout Acc,RF Change %,Delta Change,NDVI-RF Jaccard,Delta Jaccard,Verdict
+Baseline (all 10),10,0.5929,0.0557,+0.0000,68.3%,36.44%,+0.00pp,0.1253,+0.0000,BASELINE
+No NDWI,9,0.5879,0.0586,-0.0051,68.0%,36.77%,+0.33pp,0.1266,+0.0013,NEUTRAL (±noise)
+No EVI,9,0.5921,0.0570,-0.0008,68.3%,36.23%,-0.21pp,0.1266,+0.0013,NEUTRAL (±noise)
+No SAVI,9,0.5919,0.0571,-0.0010,68.2%,36.31%,-0.13pp,0.1253,+0.0000,NEUTRAL (±noise)
+No BSI,9,0.5928,0.0582,-0.0002,68.2%,36.38%,-0.06pp,0.1252,-0.0001,NEUTRAL (±noise)
+No NDVI,9,0.5923,0.0564,-0.0007,68.5%,36.31%,-0.13pp,0.1253,+0.0000,NEUTRAL (±noise)
+No Brightness,9,0.5924,0.0559,-0.0005,68.4%,36.28%,-0.16pp,0.1252,-0.0000,NEUTRAL (±noise)
+Veg indices only,4,0.5695,0.0532,-0.0235,64.8%,40.78%,+4.34pp,0.1491,+0.0238,WORSE (removing hurts)
+Spectral bands only,4,0.5910,0.0605,-0.0019,68.1%,35.65%,-0.79pp,0.1281,+0.0028,NEUTRAL (±noise)

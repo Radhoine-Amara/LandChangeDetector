@@ -1,0 +1,20 @@
+name: landchange
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - qgis=3.34.*
+  - gdal
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - pyqt
+  - jupyterlab
+  - ipykernel
+  - rasterio
+  - geopandas
+  - pandas
+  - seaborn
+  - pip

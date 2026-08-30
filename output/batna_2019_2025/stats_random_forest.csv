@@ -1,0 +1,10 @@
+method,metric,value,unit
+Random Forest,total_pixels,4000000.0,px
+Random Forest,changed_pixels,1209520.0,px
+Random Forest,unchanged_pixels,2790480.0,px
+Random Forest,change_pct,36.4412,%
+Random Forest,rf_validation_accuracy,68.34,%
+Random Forest,rf_stable_vegetation_pct,7042.87,%
+Random Forest,rf_stable_bare_soil_/_urban_pct,5689.48,%
+Random Forest,rf_stable_water_/_shadow_pct,0.0,%
+Random Forest,rf_stable_sparse_vegetation_pct,5997.95,%
