@@ -30,6 +30,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+.claude/
+.git.corrupted-bak/
 
 # QGIS
 *.qgs~
